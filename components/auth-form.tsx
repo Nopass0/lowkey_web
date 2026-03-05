@@ -3,20 +3,32 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, ADMIN_LOGIN } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LogIn, UserPlus, User, Key, X } from "lucide-react";
+import {
+  LogIn,
+  UserPlus,
+  User,
+  Key,
+  X,
+  Gift,
+  VenetianMask,
+  Shield,
+  Send,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 
 interface AuthFormProps {
   isOpen: boolean;
@@ -24,197 +36,390 @@ interface AuthFormProps {
 }
 
 export function AuthForm({ isOpen, onClose }: AuthFormProps) {
-  const [login, setLogin] = useState("");
+  const [tab, setTab] = useState<"login" | "register">("login");
+  const [loginVal, setLoginVal] = useState("");
   const [password, setPassword] = useState("");
+  const [adminCode, setAdminCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [refCode, setRefCode] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { login: doLogin } = useAuth();
+  const { login, register, requestAdminCode, verifyAdminCode, verifyOtp } =
+    useAuth();
   const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isFormValid) {
-      doLogin(login);
-      onClose();
-      router.push("/me");
+  const isAdminLogin = loginVal.trim().toLowerCase() === ADMIN_LOGIN;
+
+  const isFormValid = isAdminLogin
+    ? loginVal.trim() !== "" && (codeSent ? adminCode.trim().length >= 4 : true)
+    : tab === "login"
+      ? loginVal.trim() !== "" &&
+        (codeSent ? adminCode.trim().length >= 4 : true) // Allow empty password to trigger OTP check, backend will validate
+      : loginVal.trim() !== "" && password.trim() !== "" && termsAccepted;
+
+  const handleAdminAction = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (!codeSent) {
+        await requestAdminCode(loginVal.trim());
+        setCodeSent(true);
+      } else {
+        await verifyAdminCode(loginVal.trim(), adminCode.trim());
+        onClose();
+        router.push("/me");
+      }
+    } catch (e) {
+      setError((e as Error).message || "Ошибка авторизации");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isFormValid =
-    login.trim() !== "" && password.trim() !== "" && termsAccepted;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isAdminLogin) {
+      handleAdminAction();
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (tab === "login") {
+        if (codeSent) {
+          await verifyOtp(loginVal.trim(), adminCode.trim());
+        } else {
+          const res = await login(loginVal.trim(), password);
+          if (res === "requireOtp") {
+            setCodeSent(true);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } else {
+        await register(loginVal.trim(), password, refCode || undefined);
+      }
+      onClose();
+      router.push("/me");
+    } catch (e) {
+      setError((e as Error).message || "Ошибка авторизации");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const btnDisabled = isLoading || !isFormValid;
 
   return (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="absolute inset-0 bg-background/50 backdrop-blur-xl"
+            transition={{ duration: 0.25 }}
+            className="absolute inset-0 bg-background/60 backdrop-blur-xl"
             onClick={onClose}
           />
-
-          {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 30 }}
+            initial={{ opacity: 0, scale: 0.95, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 30 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-sm sm:max-w-[400px] z-10"
+            exit={{ opacity: 0, scale: 0.95, y: 24 }}
+            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            className="relative w-full max-w-[400px] z-10"
           >
-            <Card className="border-border/50 relative overflow-hidden bg-background">
-              {/* Decorative elements */}
-              <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-[-20%] left-[-10%] w-32 h-32 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
+            <Card className="border-border/60 relative overflow-hidden bg-background shadow-none">
+              <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-[-20%] left-[-10%] w-40 h-40 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
 
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-3 top-3 rounded-full w-8 h-8 text-muted-foreground hover:bg-muted/50 transition-colors z-20"
+                className="absolute right-3 top-3 rounded-full w-8 h-8 text-muted-foreground hover:bg-muted/50 z-20 cursor-pointer"
                 onClick={onClose}
               >
                 <X className="w-4 h-4" />
-                <span className="sr-only">Закрыть</span>
               </Button>
 
-              <CardHeader className="space-y-2 text-center relative z-10 pt-8 sm:pt-10">
+              <CardHeader className="text-center relative z-10 pt-8">
                 <motion.div
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: 0.1 }}
-                  className="mx-auto bg-primary/10 p-3.5 rounded-2xl mb-2 w-fit"
+                  transition={{ duration: 0.35, delay: 0.1 }}
+                  className="mx-auto bg-primary text-primary-foreground p-3 rounded-2xl mb-3 w-fit"
                 >
-                  <LogIn className="w-6 h-6 text-primary" />
+                  <VenetianMask className="w-6 h-6" />
                 </motion.div>
                 <CardTitle className="text-2xl font-bold tracking-tight">
-                  Вход
+                  lowkey
                 </CardTitle>
-                <CardDescription className="text-sm">
-                  Введите логин и пароль для доступа к аккаунту
-                </CardDescription>
+                <CardDescription>Безопасный и быстрый VPN</CardDescription>
               </CardHeader>
-              <CardContent className="relative z-10">
-                <form
-                  className="space-y-6 flex-1 flex flex-col gap-5"
-                  onSubmit={handleLogin}
-                >
-                  <motion.div
-                    className="grid gap-2"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.2 }}
-                  >
-                    <Label htmlFor="login" className="font-medium">
+
+              {/* Tab switcher */}
+              {!isAdminLogin && (
+                <div className="px-6 pb-2 relative z-10">
+                  <div className="bg-muted/60 border border-border/50 p-1 rounded-xl flex gap-1">
+                    {(["login", "register"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => {
+                          setTab(t);
+                          setError(null);
+                        }}
+                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {t === "login" ? "Вход" : "Регистрация"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Admin badge */}
+              {isAdminLogin && (
+                <div className="px-6 pb-2 relative z-10">
+                  <div className="flex items-center gap-2 justify-center bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-2.5">
+                    <Shield className="w-4 h-4 text-amber-500" />
+                    <span className="text-sm font-bold text-amber-500">
+                      {codeSent
+                        ? "Код отправлен в Telegram"
+                        : "Вход администратора"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <CardContent className="relative z-10 pt-4">
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                  {/* Login field */}
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="auth-login"
+                      className="font-semibold text-sm"
+                    >
                       Логин
                     </Label>
                     <div className="relative">
                       <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
-                        id="login"
+                        id="auth-login"
                         type="text"
                         placeholder="Ваш логин"
-                        className="pl-10 h-11 bg-muted/30 focus-visible:bg-transparent transition-colors"
-                        value={login}
-                        onChange={(e) => setLogin(e.target.value)}
+                        className="pl-10 h-11 bg-muted/30 focus-visible:bg-transparent transition-colors shadow-none"
+                        value={loginVal}
+                        onChange={(e) => {
+                          setLoginVal(e.target.value);
+                          setError(null);
+                          setCodeSent(false);
+                        }}
                         required
                       />
                     </div>
-                  </motion.div>
-                  <motion.div
-                    className="grid gap-2"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.3 }}
-                  >
-                    <Label htmlFor="password" className="font-medium">
-                      Пароль
-                    </Label>
-                    <div className="relative">
-                      <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder="••••••••"
-                        className="pl-10 h-11 bg-muted/30 focus-visible:bg-transparent transition-colors"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </motion.div>
+                  </div>
+
+                  {/* Password OR OTP code */}
+                  <AnimatePresence mode="wait">
+                    {isAdminLogin || (tab === "login" && codeSent) ? (
+                      <motion.div
+                        key="admin-code"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-2 overflow-hidden"
+                      >
+                        {codeSent && (
+                          <>
+                            <Label
+                              htmlFor="admin-code"
+                              className="font-semibold text-sm flex items-center gap-1.5"
+                            >
+                              <Shield
+                                className={
+                                  isAdminLogin
+                                    ? "w-3.5 h-3.5 text-amber-500"
+                                    : "w-3.5 h-3.5 text-primary"
+                                }
+                              />
+                              Код из Telegram
+                            </Label>
+                            <Input
+                              id="admin-code"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="••••••"
+                              maxLength={8}
+                              className={`h-12 text-center font-mono text-xl tracking-[0.4em] bg-muted/30 focus-visible:bg-transparent shadow-none focus-visible:ring-opacity-50 ${isAdminLogin ? "border-amber-500/30 focus-visible:ring-amber-500" : "border-primary/30 focus-visible:ring-primary"}`}
+                              value={adminCode}
+                              onChange={(e) =>
+                                setAdminCode(e.target.value.replace(/\D/g, ""))
+                              }
+                              autoFocus
+                            />
+                          </>
+                        )}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="password"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-2 overflow-hidden"
+                      >
+                        <Label
+                          htmlFor="password"
+                          className="font-semibold text-sm"
+                        >
+                          Пароль
+                        </Label>
+                        <div className="relative">
+                          <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            className="pl-10 h-11 bg-muted/30 focus-visible:bg-transparent transition-colors shadow-none"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Referral code on register */}
+                  <AnimatePresence>
+                    {tab === "register" && !isAdminLogin && (
+                      <motion.div
+                        key="refcode"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="space-y-2 overflow-hidden"
+                      >
+                        <Label
+                          htmlFor="refcode"
+                          className="font-semibold text-sm flex items-center gap-1.5"
+                        >
+                          <Gift className="w-3.5 h-3.5 text-primary" />
+                          Реферальный код{" "}
+                          <span className="text-muted-foreground font-normal">
+                            (необязательно)
+                          </span>
+                        </Label>
+                        <Input
+                          id="refcode"
+                          type="text"
+                          placeholder="Например: NOPASS7X"
+                          className="h-11 bg-muted/30 font-mono uppercase tracking-wider focus-visible:bg-transparent transition-colors shadow-none"
+                          value={refCode}
+                          onChange={(e) =>
+                            setRefCode(e.target.value.toUpperCase())
+                          }
+                          maxLength={12}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Error */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/25 rounded-xl px-4 py-2.5">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          {error}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </form>
               </CardContent>
-              <CardFooter className="flex-col gap-3 pb-8 relative z-10">
-                <motion.div
-                  className="w-full flex items-start px-2 gap-3 pb-2 pt-1"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.35 }}
-                >
-                  <Checkbox
-                    id="terms"
-                    required
-                    className="mt-0.5 shrink-0"
-                    checked={termsAccepted}
-                    onCheckedChange={(checked) =>
-                      setTermsAccepted(checked as boolean)
-                    }
-                  />
-                  <label
-                    htmlFor="terms"
-                    className="text-xs text-muted-foreground leading-snug font-normal cursor-pointer text-left block flex-1"
-                  >
-                    Регистрируясь или входя в систему, я принимаю условия{" "}
-                    <a
-                      href="/legal/offer"
-                      className="text-foreground underline underline-offset-2 hover:text-primary transition-colors"
+
+              <CardFooter className="flex-col gap-3 pb-7 relative z-10 pt-0">
+                {!isAdminLogin && (
+                  <div className="w-full flex items-start px-1 gap-3 pb-1">
+                    <Checkbox
+                      id="terms"
+                      className="mt-0.5 shrink-0 cursor-pointer"
+                      checked={termsAccepted}
+                      onCheckedChange={(v) => setTermsAccepted(v as boolean)}
+                    />
+                    <label
+                      htmlFor="terms"
+                      className="text-xs text-muted-foreground leading-snug cursor-pointer"
                     >
-                      Оферты
-                    </a>{" "}
-                    и{" "}
-                    <a
-                      href="/legal/privacy"
-                      className="text-foreground underline underline-offset-2 hover:text-primary transition-colors"
-                    >
-                      Политики
-                    </a>
-                    .
-                  </label>
-                </motion.div>
-                <motion.div
-                  className="w-full"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.4 }}
-                >
+                      Принимаю условия{" "}
+                      <a
+                        href="/legal/offer"
+                        className="text-foreground underline underline-offset-2 hover:text-primary transition-colors"
+                      >
+                        Оферты
+                      </a>{" "}
+                      и{" "}
+                      <a
+                        href="/legal/privacy"
+                        className="text-foreground underline underline-offset-2 hover:text-primary transition-colors"
+                      >
+                        Политики
+                      </a>
+                    </label>
+                  </div>
+                )}
+                <div className="w-full">
                   <Button
                     type="submit"
-                    className="w-full h-11 font-medium group text-sm sm:text-base cursor-pointer"
-                    disabled={!isFormValid}
+                    className={`w-full h-11 font-semibold cursor-pointer shadow-none rounded-xl ${isAdminLogin ? "bg-amber-500 hover:bg-amber-500/90 text-white" : ""}`}
+                    disabled={btnDisabled}
+                    onClick={handleSubmit}
                   >
-                    <LogIn className="w-4 h-4 mr-2 transition-transform group-hover:-translate-x-1" />
-                    Войти
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    {isAdminLogin ? (
+                      codeSent ? (
+                        <>
+                          <Shield className="w-4 h-4 mr-2" />
+                          Подтвердить код
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Отправить код
+                        </>
+                      )
+                    ) : tab === "login" ? (
+                      codeSent ? (
+                        <>
+                          <Shield className="w-4 h-4 mr-2" />
+                          Подтвердить код
+                        </>
+                      ) : (
+                        <>
+                          <LogIn className="w-4 h-4 mr-2" />
+                          Войти
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Создать аккаунт
+                      </>
+                    )}
                   </Button>
-                </motion.div>
-                <motion.div
-                  className="w-full"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.5 }}
-                >
-                  <Button
-                    variant="outline"
-                    type="submit"
-                    className="w-full h-11 font-medium text-sm sm:text-base bg-transparent hover:bg-muted/50 cursor-pointer group"
-                    disabled={!isFormValid}
-                  >
-                    <UserPlus className="w-4 h-4 mr-2 transition-transform group-hover:scale-110" />
-                    Регистрация
-                  </Button>
-                </motion.div>
+                </div>
               </CardFooter>
             </Card>
           </motion.div>

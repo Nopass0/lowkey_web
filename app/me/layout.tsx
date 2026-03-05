@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -16,6 +17,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { Moon, Sun } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { Loader } from "@/components/ui/loader";
 
 const routeTitles: Record<string, string> = {
   "/me": "Управление аккаунтом",
@@ -27,7 +33,31 @@ const routeTitles: Record<string, string> = {
 
 export default function MeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const currentTitle = routeTitles[pathname] || "Панель управления";
+  const { theme, toggleTheme } = useTheme();
+  const { isAuthenticated } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Redirect unauthenticated users to landing page
+  useEffect(() => {
+    if (mounted && !isAuthenticated) {
+      router.replace("/");
+    }
+  }, [mounted, isAuthenticated, router]);
+
+  // Show loader while hydrating or while redirecting
+  if (!mounted || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader size={64} />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -57,8 +87,24 @@ export default function MeLayout({ children }: { children: React.ReactNode }) {
               </BreadcrumbList>
             </Breadcrumb>
           </div>
+          <div className="pr-4 flex items-center">
+            {mounted && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className="text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-5 w-5" />
+                ) : (
+                  <Moon className="h-5 w-5" />
+                )}
+              </Button>
+            )}
+          </div>
         </header>
-        <div className="flex flex-1 flex-col gap-8 p-4 md:p-10 pt-8 pb-24 md:pb-10 w-full max-w-[1400px] mx-auto">
+        <div className="flex flex-1 flex-col gap-8 p-4 md:p-10 pt-8 pb-24 md:pb-10 w-full">
           {children}
         </div>
       </SidebarInset>

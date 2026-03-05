@@ -1,5 +1,4 @@
 "use client";
-
 import * as React from "react";
 import {
   CreditCard,
@@ -8,8 +7,14 @@ import {
   Home,
   Laptop,
   VenetianMask,
+  Users,
+  Shield,
+  Receipt,
+  Server,
+  Tag,
+  BarChart2,
+  Package,
 } from "lucide-react";
-
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import {
@@ -23,45 +28,36 @@ import {
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
-const data = {
-  navMain: [
-    {
-      title: "Кабинет",
-      url: "/me",
-      icon: Home,
-    },
-    {
-      title: "Финансы",
-      url: "/me/billing",
-      icon: CreditCard,
-    },
-    {
-      title: "Промокоды",
-      url: "/me/promo",
-      icon: Gift,
-    },
-    {
-      title: "Приложения",
-      url: "/me/downloads",
-      icon: Download,
-    },
-    {
-      title: "Устройства",
-      url: "/me/devices",
-      icon: Laptop,
-    },
-  ],
-};
+const userNav = [
+  { title: "Кабинет", url: "/me", icon: Home },
+  { title: "Финансы", url: "/me/billing", icon: CreditCard },
+  { title: "Промокоды", url: "/me/promo", icon: Gift },
+  { title: "Рефералы", url: "/me/referral", icon: Users },
+  { title: "Приложения", url: "/me/downloads", icon: Download },
+  { title: "Устройства", url: "/me/devices", icon: Laptop },
+];
+
+const adminNav = [
+  { title: "Аналитика", url: "/me/admin/finance", icon: BarChart2 },
+  { title: "Пользователи", url: "/me/admin/users", icon: Users },
+  { title: "Заявки вывода", url: "/me/admin/withdrawals", icon: Receipt },
+  { title: "Промокоды", url: "/me/admin/promo", icon: Tag },
+  { title: "Приложения", url: "/me/admin/apps", icon: Package },
+  { title: "Сервер", url: "/me/admin/server", icon: Server },
+];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { user } = useAuth();
+
   return (
     <Sidebar
       collapsible="icon"
       className="border-r border-border/50 bg-background/50 backdrop-blur-xl"
       {...props}
     >
-      <SidebarHeader className="pt-6 pb-2 px-4">
+      <SidebarHeader className="pt-6 pb-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -73,7 +69,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg shadow-md shadow-primary/20 shrink-0">
                   <VenetianMask className="size-4" />
                 </div>
-                <div className="grid flex-1 text-left leading-tight ml-2">
+                <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
                   <span className="truncate font-bold text-[15px] tracking-tight text-foreground">
                     lowkey
                   </span>
@@ -86,10 +82,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent className="px-3 mt-8">
-        <NavMain items={data.navMain} />
+
+      <SidebarContent className="mt-4">
+        <NavMain items={userNav} />
+
+        {user?.isAdmin && (
+          <>
+            {/* Divider label */}
+            <div className="px-3 pt-4 pb-1 group-data-[collapsible=icon]:hidden">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-500">
+                <Shield className="w-3 h-3" />
+                Администратор
+              </div>
+            </div>
+            <NavMain items={adminNav} />
+          </>
+        )}
       </SidebarContent>
-      <SidebarFooter className="p-3 pb-6">
+
+      <SidebarFooter className="pb-6">
         <NavUser />
       </SidebarFooter>
       <SidebarRail />

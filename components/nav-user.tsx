@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   ChevronsUpDown,
   CreditCard,
@@ -36,9 +38,33 @@ export function NavUser() {
   const { user, logout } = useAuth();
   const { profile, isLoading } = useUser();
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
-  if (!user) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const displayUser = user || { login: "nopass", avatarHash: "abcdef" };
+  const avatarHue =
+    parseInt(displayUser.avatarHash.substring(0, 6) || "0", 16) % 360;
+  const avatarColor = `hsl(${avatarHue}, 85%, 55%)`;
+
+  if (!mounted) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg">
+            <Skeleton className="h-8 w-8 rounded-lg" />
+            <div className="grid flex-1 gap-1 group-data-[collapsible=icon]:hidden">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
 
   return (
     <SidebarMenu>
@@ -53,27 +79,38 @@ export function NavUser() {
                 <AvatarFallback
                   className="rounded-lg text-primary-foreground font-bold"
                   style={{
-                    backgroundColor: `#${user.avatarHash.substring(0, 6)}`,
+                    backgroundColor: avatarColor,
                   }}
                 >
-                  {user.login.charAt(0).toUpperCase()}
+                  {displayUser.login.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.login}</span>
-                {isLoading ? (
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate font-semibold">
+                  {displayUser.login}
+                </span>
+                {isLoading && !profile ? (
                   <Skeleton className="h-3 w-16" />
-                ) : profile?.subscription ? (
-                  <span className="truncate text-xs text-primary font-medium">
-                    {profile.subscription.planName}
-                  </span>
                 ) : (
-                  <span className="truncate text-xs text-muted-foreground">
-                    Без подписки
+                  <span className="truncate text-xs text-primary flex items-center gap-1 font-medium">
+                    <span
+                      className={
+                        profile?.subscription
+                          ? "text-primary flex-1 truncate"
+                          : "text-muted-foreground flex-1 truncate"
+                      }
+                    >
+                      {profile?.subscription
+                        ? profile.subscription.planName
+                        : "Нет подписки"}
+                    </span>
+                    <span className="text-primary/100 bg-primary/10 border border-primary/20 rounded-md px-1 shrink-0">
+                      {profile?.balance || 0} ₽
+                    </span>
                   </span>
                 )}
               </div>
-              <ChevronsUpDown className="ml-auto size-4" />
+              <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -88,16 +125,18 @@ export function NavUser() {
                   <AvatarFallback
                     className="rounded-lg text-primary-foreground font-bold"
                     style={{
-                      backgroundColor: `#${user.avatarHash.substring(0, 6)}`,
+                      backgroundColor: avatarColor,
                     }}
                   >
-                    {user.login.charAt(0).toUpperCase()}
+                    {displayUser.login.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.login}</span>
-                  <span className="truncate text-xs font-mono">
-                    {profile?.balance || 0} ₽
+                  <span className="truncate font-semibold">
+                    {displayUser.login}
+                  </span>
+                  <span className="truncate text-xs font-mono text-muted-foreground">
+                    Баланс: {profile?.balance || 0} ₽
                   </span>
                 </div>
               </div>

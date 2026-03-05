@@ -1,120 +1,142 @@
 "use client";
 
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, Monitor, Smartphone, Check } from "lucide-react";
+import {
+  Download,
+  Monitor,
+  Smartphone,
+  Check,
+  Loader2,
+  HardDrive,
+} from "lucide-react";
 import { motion } from "motion/react";
+import { useDownloads } from "@/hooks/useDownloads";
+
+const PLATFORM_META = {
+  android: {
+    name: "Android",
+    sub: "Android 8.0 или выше",
+    icon: Smartphone,
+    features: [
+      "Фоновая работа без разрывов",
+      "Минимальный расход батареи",
+      "Встроенный Kill Switch",
+    ],
+  },
+  windows: {
+    name: "Windows",
+    sub: "Windows 10/11 64-bit",
+    icon: Monitor,
+    features: [
+      "Быстрый старт вместе с ОС",
+      "Специальный режим для игр",
+      "Полная совместимость с торрентами",
+    ],
+  },
+} as const;
 
 export default function DownloadsPage() {
+  const { releases, isLoading, getByPlatform } = useDownloads();
+
+  const platforms: Array<"android" | "windows"> = ["android", "windows"];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px] text-muted-foreground">
+        <Loader2 className="w-6 h-6 animate-spin mr-3" />
+        Загрузка приложений...
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-5xl">
-      <div className="mb-10 max-w-xl">
-        <h1 className="text-3xl font-bold mb-3">Приложения</h1>
-        <p className="text-muted-foreground text-lg">
-          Защитите ваше соединение на всех устройствах. Удобное приложение,
-          работающее в один клик.
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Приложения</h1>
+        <p className="text-muted-foreground mt-1">
+          Защитите соединение на всех устройствах — удобно и в один клик
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring" }}
-          className="bg-card border border-border rounded-2xl p-8 flex flex-col shadow-sm relative overflow-hidden"
-        >
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl" />
+      <div className="grid md:grid-cols-2 gap-5">
+        {platforms.map((platform, i) => {
+          const meta = PLATFORM_META[platform];
+          const release = getByPlatform(platform);
+          return (
+            <motion.div
+              key={platform}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <div className="bg-card border border-border/60 rounded-2xl p-7 flex flex-col h-full hover:border-primary/40 transition-colors">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0 border border-primary/15">
+                    <meta.icon className="w-7 h-7 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black">{meta.name}</h2>
+                    <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                      {meta.sub}
+                    </p>
+                  </div>
+                </div>
 
-          <div className="flex items-center gap-4 mb-6 relative z-10">
-            <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0 border border-primary/20 shadow-sm">
-              <Smartphone className="w-7 h-7 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">Android</h2>
-              <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                Android 8.0 или выше
-              </p>
-            </div>
-          </div>
+                <ul className="space-y-3 mb-5 flex-1">
+                  {meta.features.map((f) => (
+                    <li key={f} className="flex items-start gap-3">
+                      <div className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <Check className="w-3 h-3 text-green-500 stroke-[3]" />
+                      </div>
+                      <span className="text-muted-foreground text-[15px] font-medium leading-snug">
+                        {f}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
 
-          <ul className="text-sm space-y-3 font-medium text-left w-full mb-8 flex-1 relative z-10">
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Фоновая работа приложения без разрывов
-              </span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Минимальный расход батареи и памяти
-              </span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Встроенный Kill Switch для безопасности
-              </span>
-            </li>
-          </ul>
+                {release && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-4 px-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-primary">
+                        v{release.version}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {new Date(release.createdAt).toLocaleDateString(
+                          "ru-RU",
+                          { day: "numeric", month: "short" },
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <HardDrive className="w-3.5 h-3.5" />
+                      {release.fileSizeMb} МБ
+                    </div>
+                  </div>
+                )}
 
-          <Button
-            size="lg"
-            className="w-full cursor-pointer mt-auto font-semibold h-12 relative z-10"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            Скачать APK (v1.4.2)
-          </Button>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", delay: 0.1 }}
-          className="bg-card border border-border rounded-2xl p-8 flex flex-col shadow-sm relative overflow-hidden"
-        >
-          <div className="absolute -top-10 -left-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl" />
-
-          <div className="flex items-center gap-4 mb-6 relative z-10">
-            <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0 border border-primary/20 shadow-sm">
-              <Monitor className="w-7 h-7 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">Windows</h2>
-              <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                Windows 10/11 64-bit
-              </p>
-            </div>
-          </div>
-
-          <ul className="text-sm space-y-3 font-medium text-left w-full mb-8 flex-1 relative z-10">
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Быстрый старт вместе с запуском ОС
-              </span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Специальный режим для онлайн игр
-              </span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-500 shrink-0" />
-              <span className="text-muted-foreground text-[15px] leading-snug">
-                Полная совместимость с торрентами
-              </span>
-            </li>
-          </ul>
-
-          <Button
-            size="lg"
-            className="w-full cursor-pointer mt-auto font-semibold h-12 relative z-10 bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            Скачать Installer (v2.1.0)
-          </Button>
-        </motion.div>
+                <Button
+                  asChild={!!release?.downloadUrl}
+                  variant={platform === "android" ? "default" : "secondary"}
+                  className="w-full h-12 cursor-pointer font-bold shadow-none rounded-xl"
+                  disabled={!release}
+                >
+                  {release ? (
+                    <a href={release.downloadUrl} download>
+                      <Download className="w-4 h-4 mr-2" />
+                      Скачать {platform === "android" ? "APK" : "Installer"} (v
+                      {release.version})
+                    </a>
+                  ) : (
+                    <span>Нет доступных релизов</span>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );
