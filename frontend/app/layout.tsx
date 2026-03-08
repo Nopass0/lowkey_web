@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Noto_Sans } from "next/font/google";
-import "./globals.css";
 import { ThemeListener } from "@/components/theme-listener";
+import "./globals.css";
 
 const notoSans = Noto_Sans({ variable: "--font-sans" });
 
@@ -16,8 +16,44 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "lowkey",
-  description: "lowkey - безопасный и быстрый интернет",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://lowkey.su"),
+  title: {
+    default: "lowkey",
+    template: "%s | lowkey",
+  },
+  description:
+    "lowkey — сервис для защищенного соединения, стабильной работы онлайн-сервисов и оптимизации сетевых маршрутов.",
+  applicationName: "lowkey",
+  keywords: [
+    "lowkey",
+    "защищенное соединение",
+    "безопасный интернет",
+    "стабильное соединение",
+    "оптимизация маршрутов",
+    "vpn сервис",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "lowkey",
+    description:
+      "Защищенное соединение, стабильный доступ к сервисам и оптимизация интернет-маршрутов.",
+    url: "/",
+    siteName: "lowkey",
+    locale: "ru_RU",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "lowkey",
+    description:
+      "Защищенное соединение и оптимизация интернет-маршрутов для повседневной работы.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
@@ -26,7 +62,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={notoSans.variable}>
+    <html lang="ru" className={notoSans.variable}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

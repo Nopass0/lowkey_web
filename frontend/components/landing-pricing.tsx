@@ -65,9 +65,9 @@ function RollingNumber({ value }: { value: number }) {
   return (
     <span className="inline-flex overflow-hidden relative">
       <AnimatePresence mode="popLayout" initial={false}>
-        {digits.map((digit, i) => (
+        {digits.map((digit, index) => (
           <motion.span
-            key={`${i}-${digit}`}
+            key={`${index}-${digit}`}
             initial={{ y: "100%", opacity: 0 }}
             animate={{ y: "0%", opacity: 1 }}
             exit={{ y: "-100%", opacity: 0 }}
@@ -153,7 +153,7 @@ export function LandingPricing() {
             transition={{ delay: 0.1 }}
             className="text-xl text-muted-foreground"
           >
-            Выберите план, подходящий именно вам
+            Выберите план, который подходит именно вам
           </motion.p>
           {loadError ? (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -187,7 +187,7 @@ export function LandingPricing() {
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto pt-8">
-          {plans.map((plan, i) => {
+          {plans.map((plan, index) => {
             const currentMonthlyPrice = plan.prices[period] ?? plan.prices.monthly;
 
             return (
@@ -197,7 +197,7 @@ export function LandingPricing() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{
-                  delay: i * 0.1 + 0.3,
+                  delay: index * 0.1 + 0.3,
                   type: "spring",
                   stiffness: 100,
                 }}

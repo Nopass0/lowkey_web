@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { VenetianMask, Sun, Moon } from "lucide-react";
-import { Button } from "./ui/button";
-import { AuthForm } from "./auth-form";
+import { Moon, Sun, VenetianMask } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { useLanding } from "@/hooks/useLanding";
 import { useTheme } from "@/hooks/useTheme";
-import { useAuth } from "@/hooks/useAuth";
+import { AuthForm } from "./auth-form";
+import { Button } from "./ui/button";
 
 export function LandingHeader() {
   const { isAuthModalOpen, setAuthModalOpen } = useLanding();

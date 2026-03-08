@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { VenetianMask } from "lucide-react";
+import { Bot, VenetianMask } from "lucide-react";
 
 export function LandingFooter() {
   return (
@@ -15,7 +15,7 @@ export function LandingFooter() {
               <p className="font-semibold text-foreground">
                 ИП Галин Богдан Маратович
               </p>
-              <p>ИНН 000000000</p>
+              <p>ИНН 740414494214</p>
             </div>
           </div>
 
@@ -34,6 +34,15 @@ export function LandingFooter() {
               className="text-sm text-muted-foreground hover:text-primary transition-colors underline-offset-4 hover:underline"
             >
               Политика конфиденциальности
+            </Link>
+            <Link
+              href="https://t.me/lowkeyvpnbot"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors underline-offset-4 hover:underline"
+            >
+              <Bot className="h-4 w-4" />
+              @lowkeyvpnbot
             </Link>
           </div>
         </div>

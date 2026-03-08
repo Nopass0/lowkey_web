@@ -3,33 +3,33 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Gift,
+  Key,
+  Loader2,
+  LogIn,
+  Send,
+  Shield,
+  User,
+  UserPlus,
+  VenetianMask,
+  X,
+} from "lucide-react";
 import { useAuth, ADMIN_LOGIN } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  LogIn,
-  UserPlus,
-  User,
-  Key,
-  X,
-  Gift,
-  VenetianMask,
-  Shield,
-  Send,
-  Loader2,
-  AlertCircle,
-  ArrowRight,
-} from "lucide-react";
 
 interface AuthFormProps {
   isOpen: boolean;
@@ -184,32 +184,32 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
                 <CardTitle className="text-2xl font-bold tracking-tight">
                   lowkey
                 </CardTitle>
-                <CardDescription>Безопасный и быстрый VPN</CardDescription>
+                <CardDescription>
+                  Безопасное и быстрое соединение
+                </CardDescription>
               </CardHeader>
 
-              {/* Tab switcher */}
               {!isAdminLogin && (
                 <div className="px-6 pb-2 relative z-10">
                   <div className="bg-muted/60 border border-border/50 p-1 rounded-xl flex gap-1">
-                    {(["login", "register"] as const).map((t) => (
+                    {(["login", "register"] as const).map((currentTab) => (
                       <button
-                        key={t}
+                        key={currentTab}
                         type="button"
                         onClick={() => {
-                          setTab(t);
+                          setTab(currentTab);
                           setError(null);
                           setLoginStep(1);
                         }}
-                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${tab === currentTab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
                       >
-                        {t === "login" ? "Вход" : "Регистрация"}
+                        {currentTab === "login" ? "Вход" : "Регистрация"}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Admin badge */}
               {isAdminLogin && (
                 <div className="px-6 pb-2 relative z-10">
                   <div className="flex items-center gap-2 justify-center bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-2.5">
@@ -225,7 +225,6 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
 
               <CardContent className="relative z-10 pt-4">
                 <form className="space-y-4" onSubmit={handleSubmit}>
-                  {/* Login field */}
                   <div className="space-y-2">
                     <Label
                       htmlFor="auth-login"
@@ -251,7 +250,6 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
                     </div>
                   </div>
 
-                  {/* Password OR OTP code */}
                   <AnimatePresence mode="wait">
                     {isAdminLogin ? (
                       <motion.div
@@ -381,7 +379,6 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
                     ) : null}
                   </AnimatePresence>
 
-                  {/* Referral code on register */}
                   <AnimatePresence>
                     {tab === "register" && !isAdminLogin && (
                       <motion.div
@@ -417,7 +414,6 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
                     )}
                   </AnimatePresence>
 
-                  {/* Error */}
                   <AnimatePresence>
                     {error && (
                       <motion.div
@@ -437,13 +433,15 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
               </CardContent>
 
               <CardFooter className="flex-col gap-3 pb-7 relative z-10 pt-0">
-                {!isAdminLogin && (
+                {tab === "register" && !isAdminLogin && (
                   <div className="w-full flex items-start px-1 gap-3 pb-1">
                     <Checkbox
                       id="terms"
-                      className="mt-0.5 shrink-0 cursor-pointer"
+                      className="mt-1 shrink-0 cursor-pointer"
                       checked={termsAccepted}
-                      onCheckedChange={(v) => setTermsAccepted(v as boolean)}
+                      onCheckedChange={(value) =>
+                        setTermsAccepted(value as boolean)
+                      }
                     />
                     <label
                       htmlFor="terms"
@@ -461,7 +459,7 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
                         href="/legal/privacy"
                         className="text-foreground underline underline-offset-2 hover:text-primary transition-colors"
                       >
-                        Политики
+                        Политики конфиденциальности
                       </a>
                     </label>
                   </div>

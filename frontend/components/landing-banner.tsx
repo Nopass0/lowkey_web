@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Button } from "./ui/button";
 import { motion } from "motion/react";
 import { useLanding } from "@/hooks/useLanding";
+import { Button } from "./ui/button";
 
 export function LandingBanner() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,13 +26,7 @@ export function LandingBanner() {
     window.addEventListener("resize", resize);
 
     const pixelSize = 16;
-    let cols = Math.floor(w / pixelSize);
-    let rows = Math.floor(h / pixelSize);
-    const pixels = Array.from({ length: cols * rows }, () => ({
-      val: Math.random() * 0.5,
-      target: Math.random(),
-      speed: Math.random() * 0.05 + 0.01,
-    }));
+    const pixels: Array<{ val: number; target: number; speed: number }> = [];
 
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
@@ -51,18 +45,16 @@ export function LandingBanner() {
             };
           }
 
-          let p = pixels[idx];
-          p.val += (p.target - p.val) * p.speed;
+          const pixel = pixels[idx];
+          pixel.val += (pixel.target - pixel.val) * pixel.speed;
 
-          if (Math.abs(p.target - p.val) < 0.05) {
-            // New target to simulate fast recalculation
-            p.target = Math.random() > 0.9 ? Math.random() : 0;
-            p.speed = Math.random() * 0.1 + 0.05;
+          if (Math.abs(pixel.target - pixel.val) < 0.05) {
+            pixel.target = Math.random() > 0.9 ? Math.random() : 0;
+            pixel.speed = Math.random() * 0.1 + 0.05;
           }
 
-          if (p.val > 0.1) {
-            // using the blue primary theme
-            ctx.fillStyle = `rgba(59, 130, 246, ${p.val * 0.8})`;
+          if (pixel.val > 0.1) {
+            ctx.fillStyle = `rgba(59, 130, 246, ${pixel.val * 0.8})`;
             ctx.fillRect(
               i * pixelSize + 1,
               j * pixelSize + 1,
@@ -90,8 +82,6 @@ export function LandingBanner() {
         ref={canvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none opacity-40 dark:opacity-20"
       />
-
-      {/* Radial gradient mask to fade canvas smoothly at the edges */}
       <div className="absolute inset-0 bg-background [mask-image:radial-gradient(transparent_20%,black_100%)] pointer-events-none" />
 
       <div className="relative z-10 text-center px-4 md:px-6 w-full max-w-4xl mx-auto flex flex-col items-center">
@@ -101,7 +91,7 @@ export function LandingBanner() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="bg-primary/10 border border-primary/20 text-primary px-4 py-1.5 rounded-full text-sm font-medium mb-6 backdrop-blur-md inline-block shadow-sm"
         >
-          Новая эра вашей приватности
+          Защищенное соединение для повседневной работы
         </motion.div>
 
         <motion.h1
@@ -113,7 +103,7 @@ export function LandingBanner() {
           <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400">
             lowkey
           </span>{" "}
-          — защищенное соединение и ускорение интернета
+          — защищенное соединение и оптимизация интернет-маршрутов
         </motion.h1>
 
         <motion.p
@@ -127,12 +117,21 @@ export function LandingBanner() {
         </motion.p>
 
         <motion.p
-          className="text-xs md:text-sm text-muted-foreground/40 mb-10 mx-auto font-medium whitespace-nowrap"
+          className="text-xs md:text-sm text-muted-foreground/50 mb-2 mx-auto font-medium whitespace-nowrap"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          * далее от 299 рублей в месяц (при оплате за год)
+          * далее от 79 рублей в месяц
+        </motion.p>
+
+        <motion.p
+          className="text-xs md:text-sm text-muted-foreground/50 mb-10 mx-auto font-medium"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.35 }}
+        >
+          При оплате за год
         </motion.p>
 
         <motion.div
@@ -144,11 +143,11 @@ export function LandingBanner() {
             size="lg"
             className="text-lg px-8 py-7 rounded-full shadow-[0_0_40px_-10px_rgba(59,130,246,0.6)] cursor-pointer hover:scale-105 transition-all outline-none font-bold group"
             onClick={() => {
-              setPlan("advanced", "12");
+              setPlan("advanced", "yearly");
               setAuthModalOpen(true);
             }}
           >
-            Ускорить интернет
+            Подключить lowkey
           </Button>
         </motion.div>
       </div>
