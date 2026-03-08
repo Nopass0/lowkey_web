@@ -16,7 +16,7 @@ import { redis } from "../redis";
  * Adds `user` object to the context with `userId` and `isAdmin`.
  */
 export const authMiddleware = new Elysia({ name: "auth" }).derive(
-  { as: "global" },
+  { as: "local" },
   async ({ headers, set }) => {
     const token = headers.authorization?.replace("Bearer ", "");
     if (!token) {
