@@ -133,6 +133,9 @@ deploy_stack() {
   cd "${ROOT_DIR}"
   local compose_cmd=(docker compose --env-file .env.compose -p "lowkey-${APP_ENV}")
 
+  export DOCKER_BUILDKIT=0
+  export COMPOSE_DOCKER_CLI_BUILD=0
+
   "${compose_cmd[@]}" build backend
   "${compose_cmd[@]}" build frontend
   "${compose_cmd[@]}" up -d --remove-orphans backend frontend
