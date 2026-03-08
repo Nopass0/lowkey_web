@@ -15,6 +15,7 @@ jobs:
       BACKEND_BIND_PORT: ${{ github.ref_name == 'main' && '3101' || '3201' }}
       FRONTEND_BIND_PORT: ${{ github.ref_name == 'main' && '3100' || '3200' }}
       NEXT_PUBLIC_API_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su/api' || 'https://dev.lowkey.su/api' }}
+      NEXT_PUBLIC_SITE_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su' || 'https://dev.lowkey.su' }}
       DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
       REDIS_URL: ${{ secrets.REDIS_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -51,6 +52,7 @@ jobs:
           BACKEND_BIND_PORT: ${{ env.BACKEND_BIND_PORT }}
           FRONTEND_BIND_PORT: ${{ env.FRONTEND_BIND_PORT }}
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SITE_URL: ${{ env.NEXT_PUBLIC_SITE_URL }}
           REMOTE_BASE: ${{ env.REMOTE_BASE }}
           DATABASE_URL: ${{ env.DATABASE_URL }}
           REDIS_URL: ${{ env.REDIS_URL }}
@@ -68,7 +70,7 @@ jobs:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          envs: APP_ENV,DOMAIN,BACKEND_BIND_PORT,FRONTEND_BIND_PORT,NEXT_PUBLIC_API_URL,REMOTE_BASE,DATABASE_URL,REDIS_URL,JWT_SECRET,JWT_EXPIRY,ADMIN_LOGIN,ADMIN_JWT_EXPIRY,TELEGRAM_BOT_TOKEN,TELEGRAM_ADMIN_CHAT_ID,TOCHKA_API_KEY,TOCHKA_ACCOUNT_ID,TOCHKA_MERCHANT_ID,LETSENCRYPT_EMAIL
+          envs: APP_ENV,DOMAIN,BACKEND_BIND_PORT,FRONTEND_BIND_PORT,NEXT_PUBLIC_API_URL,NEXT_PUBLIC_SITE_URL,REMOTE_BASE,DATABASE_URL,REDIS_URL,JWT_SECRET,JWT_EXPIRY,ADMIN_LOGIN,ADMIN_JWT_EXPIRY,TELEGRAM_BOT_TOKEN,TELEGRAM_ADMIN_CHAT_ID,TOCHKA_API_KEY,TOCHKA_ACCOUNT_ID,TOCHKA_MERCHANT_ID,LETSENCRYPT_EMAIL
           script: |
             cd "${REMOTE_BASE}"
             chmod +x deploy/scripts/provision-server.sh
@@ -78,6 +80,7 @@ jobs:
             BACKEND_BIND_PORT="${BACKEND_BIND_PORT}" \
             FRONTEND_BIND_PORT="${FRONTEND_BIND_PORT}" \
             NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}" \
+            NEXT_PUBLIC_SITE_URL="${NEXT_PUBLIC_SITE_URL}" \
             DATABASE_URL="${DATABASE_URL}" \
             REDIS_URL="${REDIS_URL}" \
             JWT_SECRET="${JWT_SECRET}" \

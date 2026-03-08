@@ -7,7 +7,18 @@ DOMAIN="${DOMAIN:?DOMAIN is required}"
 BACKEND_BIND_PORT="${BACKEND_BIND_PORT:?BACKEND_BIND_PORT is required}"
 FRONTEND_BIND_PORT="${FRONTEND_BIND_PORT:?FRONTEND_BIND_PORT is required}"
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}"
+NEXT_PUBLIC_SITE_URL="${NEXT_PUBLIC_SITE_URL:-https://${DOMAIN}}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL is required}"
+
+require_backend_env() {
+  local key="$1"
+  local value="${!key:-}"
+
+  if [[ -z "${value}" ]]; then
+    echo "Missing required backend environment variable: ${key}" >&2
+    return 1
+  fi
+}
 
 render_template() {
   local template_path="$1"
@@ -25,14 +36,35 @@ ensure_server_packages() {
 }
 
 write_env_files() {
-  cat > "${ROOT_DIR}/.env.compose" <<EOF
+  local compose_tmp
+  local backend_tmp
+
+  compose_tmp="$(mktemp)"
+
+  cat > "${compose_tmp}" <<EOF
 APP_ENV=${APP_ENV}
 BACKEND_BIND_PORT=${BACKEND_BIND_PORT}
 FRONTEND_BIND_PORT=${FRONTEND_BIND_PORT}
 NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 EOF
+  mv "${compose_tmp}" "${ROOT_DIR}/.env.compose"
 
-  cat > "${ROOT_DIR}/.env.backend" <<EOF
+  require_backend_env DATABASE_URL
+  require_backend_env REDIS_URL
+  require_backend_env JWT_SECRET
+  require_backend_env JWT_EXPIRY
+  require_backend_env ADMIN_LOGIN
+  require_backend_env ADMIN_JWT_EXPIRY
+  require_backend_env TELEGRAM_BOT_TOKEN
+  require_backend_env TELEGRAM_ADMIN_CHAT_ID
+  require_backend_env TOCHKA_API_KEY
+  require_backend_env TOCHKA_ACCOUNT_ID
+  require_backend_env TOCHKA_MERCHANT_ID
+
+  backend_tmp="$(mktemp)"
+
+  cat > "${backend_tmp}" <<EOF
 DATABASE_URL=${DATABASE_URL}
 REDIS_URL=${REDIS_URL}
 JWT_SECRET=${JWT_SECRET}
@@ -48,6 +80,7 @@ APP_FILES_DIR=./uploads
 PORT=3001
 NODE_ENV=production
 EOF
+  mv "${backend_tmp}" "${ROOT_DIR}/.env.backend"
 
   mkdir -p "${ROOT_DIR}/deploy/runtime/${APP_ENV}/uploads"
 }
