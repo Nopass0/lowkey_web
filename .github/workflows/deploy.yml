@@ -67,7 +67,7 @@ jobs:
           host: ${{ secrets.SSH_SERVER }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          source: "."
+          source: "backend,deploy,frontend,.env.backend,.env.compose,.gitignore,docker-compose.yml,run.sh,run.ps1"
           target: ${{ env.REMOTE_BASE }}
           rm: true
           strip_components: 0
