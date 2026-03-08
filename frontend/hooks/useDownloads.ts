@@ -1,7 +1,7 @@
 /**
  * @fileoverview App release download links for user-facing downloads page.
  *
- * GET /downloads/releases → latest release per platform (android, windows).
+ * GET /downloads/releases -> latest release per platform.
  *
  * @example
  * const { releases, isLoading } = useDownloads();
@@ -9,42 +9,55 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { apiClient } from "@/api/client";
 import { API_CONFIG } from "@/api/config";
 import type { AppRelease } from "@/api/types";
 
-// ── Mock data ──────────────────────────────────────────────────
+const HTTP_URL_RE = /^https?:\/\//i;
 
 const MOCK_RELEASES: AppRelease[] = [
   {
     id: "rel-android-1",
     platform: "android",
-    version: "1.4.2",
+    version: "store",
     changelog:
-      "• Улучшен Kill Switch\n• Исправлены проблемы с подключением на Android 14\n• Ускорен старт соединения",
-    downloadUrl: "https://cdn.lowkey.vpn/releases/android/lowkey-1.4.2.apk",
-    fileSizeMb: 28.4,
+      "Official Google Play install link for the Android client.",
+    downloadUrl:
+      "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+    fileSizeMb: 0,
     downloadCount: 1247,
+    isLatest: true,
+    createdAt: "2026-02-20T00:00:00Z",
+  },
+  {
+    id: "rel-ios-1",
+    platform: "ios",
+    version: "store",
+    changelog: "Official App Store install link for the iOS client.",
+    downloadUrl: "https://apps.apple.com/us/app/v2raytun/id6476628951",
+    fileSizeMb: 0,
+    downloadCount: 938,
     isLatest: true,
     createdAt: "2026-02-20T00:00:00Z",
   },
   {
     id: "rel-windows-1",
     platform: "windows",
-    version: "1.3.8",
-    changelog:
-      "• Нативная интеграция с Windows 11\n• Автозапуск при включении ПК\n• Исправлены зависания при переключении серверов",
+    version: "1.0.13",
+    changelog: "Official Throne installer for Windows.",
     downloadUrl:
-      "https://cdn.lowkey.vpn/releases/windows/lowkey-setup-1.3.8.exe",
-    fileSizeMb: 65.2,
+      "https://github.com/throneproj/Throne/releases/download/1.0.13/Throne-1.0.13-windows64-installer.exe",
+    fileSizeMb: 0,
     downloadCount: 894,
     isLatest: true,
     createdAt: "2026-02-18T00:00:00Z",
   },
 ];
 
-// ── Hook ───────────────────────────────────────────────────────
+function hasPublicDownloadUrl(release: AppRelease) {
+  return HTTP_URL_RE.test(release.downloadUrl.trim());
+}
 
 /**
  * Fetches the latest app release for each supported platform.
@@ -57,38 +70,44 @@ export function useDownloads() {
 
   useEffect(() => {
     let mounted = true;
+
     if (API_CONFIG.debug) {
       setTimeout(() => {
         if (mounted) {
-          setReleases(MOCK_RELEASES);
+          setReleases(MOCK_RELEASES.filter(hasPublicDownloadUrl));
           setIsLoading(false);
         }
       }, 400);
+
       return () => {
         mounted = false;
       };
     }
+
     apiClient
       .get<AppRelease[]>("/downloads/releases")
-      .then((d) => {
+      .then((data) => {
         if (mounted) {
-          setReleases(d.filter((r) => r.isLatest));
+          setReleases(
+            data.filter((release) => release.isLatest && hasPublicDownloadUrl(release)),
+          );
           setIsLoading(false);
         }
       })
-      .catch((e) => {
+      .catch((err) => {
         if (mounted) {
-          setError((e as Error).message);
+          setError((err as Error).message);
           setIsLoading(false);
         }
       });
+
     return () => {
       mounted = false;
     };
   }, []);
 
-  const getByPlatform = (platform: "android" | "windows" | "ios") =>
-    releases.find((r) => r.platform === platform) ?? null;
+  const getByPlatform = (platform: "android" | "ios" | "windows") =>
+    releases.find((release) => release.platform === platform) ?? null;
 
   return { releases, isLoading, error, getByPlatform };
 }

@@ -267,8 +267,8 @@ export interface WithdrawalItem {
 /** GET /downloads/releases — latest release per platform */
 export interface AppRelease {
   id: string;
-  /** "android" | "windows" */
-  platform: "android" | "windows";
+  /** "android" | "ios" | "windows" */
+  platform: "android" | "ios" | "windows";
   version: string;
   changelog: string;
   downloadUrl: string;

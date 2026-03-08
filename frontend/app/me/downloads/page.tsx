@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  Check,
   Download,
+  HardDrive,
+  Loader2,
   Monitor,
   Smartphone,
-  Check,
-  Loader2,
-  HardDrive,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useDownloads } from "@/hooks/useDownloads";
@@ -16,47 +15,49 @@ import { useDownloads } from "@/hooks/useDownloads";
 const PLATFORM_META = {
   android: {
     name: "Android",
-    sub: "Android 8.0 или выше",
+    sub: "Android 8.0 или новее",
     icon: Smartphone,
     features: [
-      "Фоновая работа без разрывов",
-      "Минимальный расход батареи",
-      "Встроенный Kill Switch",
+      "Стабильное фоновое подключение",
+      "Низкий расход батареи",
+      "Поддержка Kill Switch",
     ],
     fallbackUrl:
       "https://play.google.com/store/apps/details?id=com.v2raytun.android",
-    fallbackName: "v2rayTun (Google Play)",
+    fallbackName: "Google Play",
+    actionLabel: "Открыть в Google Play",
   },
   ios: {
     name: "iOS (iPhone/iPad)",
-    sub: "iOS 12.0 или выше",
+    sub: "iOS 12.0 или новее",
     icon: Smartphone,
     features: [
       "Интеграция с системой",
       "Безопасный веб-серфинг",
-      "Простое управление",
+      "Простая установка",
     ],
     fallbackUrl: "https://apps.apple.com/us/app/v2raytun/id6476628951",
-    fallbackName: "v2rayTun (App Store)",
+    fallbackName: "App Store",
+    actionLabel: "Открыть в App Store",
   },
   windows: {
     name: "Windows",
     sub: "Windows 10/11 64-bit",
     icon: Monitor,
     features: [
-      "Быстрый старт вместе с ОС",
-      "Специальный режим для игр",
-      "Полная совместимость с торрентами",
+      "Быстрый запуск вместе с ОС",
+      "Удобная работа на десктопе",
+      "Совместимость с рекомендуемым клиентом",
     ],
     fallbackUrl:
       "https://github.com/throneproj/Throne/releases/download/1.0.13/Throne-1.0.13-windows64-installer.exe",
     fallbackName: "Throne (.exe)",
+    actionLabel: "Скачать для Windows",
   },
 } as const;
 
 export default function DownloadsPage() {
-  const { releases, isLoading, getByPlatform } = useDownloads();
-
+  const { isLoading, getByPlatform } = useDownloads();
   const platforms: Array<keyof typeof PLATFORM_META> = [
     "android",
     "ios",
@@ -65,76 +66,84 @@ export default function DownloadsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[300px] text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin mr-3" />
+      <div className="flex min-h-[300px] items-center justify-center text-muted-foreground">
+        <Loader2 className="mr-3 h-6 w-6 animate-spin" />
         Загрузка приложений...
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+    <div className="animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-20 duration-500">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Приложения</h1>
-        <p className="text-muted-foreground mt-1">
-          Защитите соединение на всех устройствах — удобно и в один клик
+        <p className="mt-1 text-muted-foreground">
+          Установите рекомендованный клиент для вашего устройства и подключайтесь
+          в один клик.
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5">
-        {platforms.map((platform, i) => {
+      <div className="grid gap-5 md:grid-cols-2">
+        {platforms.map((platform, index) => {
           const meta = PLATFORM_META[platform];
           const release = getByPlatform(platform);
+          const ctaLabel =
+            release && platform === "windows"
+              ? `${meta.actionLabel} (v${release.version})`
+              : release
+                ? meta.actionLabel
+                : `Открыть ${meta.fallbackName}`;
+
           return (
             <motion.div
               key={platform}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
+              transition={{ delay: index * 0.1 }}
             >
-              <div className="bg-card border border-border/60 rounded-2xl p-7 flex flex-col h-full hover:border-primary/40 transition-colors">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0 border border-primary/15">
-                    <meta.icon className="w-7 h-7 text-primary" />
+              <div className="flex h-full flex-col rounded-2xl border border-border/60 bg-card p-7 transition-colors hover:border-primary/40">
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10">
+                    <meta.icon className="h-7 w-7 text-primary" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-black">{meta.name}</h2>
-                    <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                    <p className="mt-0.5 text-sm font-medium text-muted-foreground">
                       {meta.sub}
                     </p>
                   </div>
                 </div>
 
-                <ul className="space-y-3 mb-5 flex-1">
-                  {meta.features.map((f) => (
-                    <li key={f} className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3 h-3 text-green-500 stroke-[3]" />
+                <ul className="mb-5 flex-1 space-y-3">
+                  {meta.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500/10">
+                        <Check className="h-3 w-3 stroke-[3] text-green-500" />
                       </div>
-                      <span className="text-muted-foreground text-[15px] font-medium leading-snug">
-                        {f}
+                      <span className="text-[15px] font-medium leading-snug text-muted-foreground">
+                        {feature}
                       </span>
                     </li>
                   ))}
                 </ul>
 
                 {release && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-4 px-1">
+                  <div className="mb-4 flex items-center justify-between px-1 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <span className="font-bold text-primary">
-                        v{release.version}
+                        {platform === "windows" ? `v${release.version}` : "Магазин"}
                       </span>
                       <span>·</span>
                       <span>
-                        {new Date(release.createdAt).toLocaleDateString(
-                          "ru-RU",
-                          { day: "numeric", month: "short" },
-                        )}
+                        {new Date(release.createdAt).toLocaleDateString("ru-RU", {
+                          day: "numeric",
+                          month: "short",
+                        })}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <HardDrive className="w-3.5 h-3.5" />
-                      {release.fileSizeMb} МБ
+                      <HardDrive className="h-3.5 w-3.5" />
+                      {release.fileSizeMb > 0 ? `${release.fileSizeMb} МБ` : "Ссылка"}
                     </div>
                   </div>
                 )}
@@ -142,24 +151,16 @@ export default function DownloadsPage() {
                 <Button
                   asChild
                   variant={platform === "android" ? "default" : "secondary"}
-                  className="w-full h-12 cursor-pointer font-bold shadow-none rounded-xl"
+                  className="h-12 w-full rounded-xl font-bold shadow-none"
                 >
-                  {release ? (
-                    <a href={release.downloadUrl} download>
-                      <Download className="w-4 h-4 mr-2" />
-                      Скачать {platform === "android" ? "APK" : "Installer"} (v
-                      {release.version})
-                    </a>
-                  ) : (
-                    <a
-                      href={meta.fallbackUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Скачать {meta.fallbackName}
-                    </a>
-                  )}
+                  <a
+                    href={release?.downloadUrl ?? meta.fallbackUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {ctaLabel}
+                  </a>
                 </Button>
               </div>
             </motion.div>
