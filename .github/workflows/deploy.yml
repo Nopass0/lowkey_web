@@ -1,0 +1,93 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: ${{ github.ref_name == 'main' && 'main' || 'dev' }}
+      DOMAIN: ${{ github.ref_name == 'main' && 'lowkey.su' || 'dev.lowkey.su' }}
+      BACKEND_BIND_PORT: ${{ github.ref_name == 'main' && '3101' || '3201' }}
+      FRONTEND_BIND_PORT: ${{ github.ref_name == 'main' && '3100' || '3200' }}
+      NEXT_PUBLIC_API_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su/api' || 'https://dev.lowkey.su/api' }}
+      DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRY: ${{ secrets.JWT_EXPIRY }}
+      ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN }}
+      ADMIN_JWT_EXPIRY: ${{ secrets.ADMIN_JWT_EXPIRY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+      TOCHKA_API_KEY: ${{ secrets.TOCHKA_API_KEY }}
+      TOCHKA_ACCOUNT_ID: ${{ secrets.TOCHKA_ACCOUNT_ID }}
+      TOCHKA_MERCHANT_ID: ${{ secrets.TOCHKA_MERCHANT_ID }}
+      LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+      REMOTE_BASE: /opt/lowkey_site/${{ github.ref_name == 'main' && 'main' || 'dev' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload project
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "."
+          target: ${{ env.REMOTE_BASE }}
+          rm: true
+          strip_components: 0
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_ENV: ${{ env.APP_ENV }}
+          DOMAIN: ${{ env.DOMAIN }}
+          BACKEND_BIND_PORT: ${{ env.BACKEND_BIND_PORT }}
+          FRONTEND_BIND_PORT: ${{ env.FRONTEND_BIND_PORT }}
+          NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          REMOTE_BASE: ${{ env.REMOTE_BASE }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
+          JWT_EXPIRY: ${{ env.JWT_EXPIRY }}
+          ADMIN_LOGIN: ${{ env.ADMIN_LOGIN }}
+          ADMIN_JWT_EXPIRY: ${{ env.ADMIN_JWT_EXPIRY }}
+          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ env.TELEGRAM_ADMIN_CHAT_ID }}
+          TOCHKA_API_KEY: ${{ env.TOCHKA_API_KEY }}
+          TOCHKA_ACCOUNT_ID: ${{ env.TOCHKA_ACCOUNT_ID }}
+          TOCHKA_MERCHANT_ID: ${{ env.TOCHKA_MERCHANT_ID }}
+          LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
+        with:
+          host: ${{ secrets.SSH_SERVER }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          envs: APP_ENV,DOMAIN,BACKEND_BIND_PORT,FRONTEND_BIND_PORT,NEXT_PUBLIC_API_URL,REMOTE_BASE,DATABASE_URL,REDIS_URL,JWT_SECRET,JWT_EXPIRY,ADMIN_LOGIN,ADMIN_JWT_EXPIRY,TELEGRAM_BOT_TOKEN,TELEGRAM_ADMIN_CHAT_ID,TOCHKA_API_KEY,TOCHKA_ACCOUNT_ID,TOCHKA_MERCHANT_ID,LETSENCRYPT_EMAIL
+          script: |
+            cd "${REMOTE_BASE}"
+            chmod +x deploy/scripts/provision-server.sh
+            chmod +x deploy/scripts/deploy.sh
+            APP_ENV="${APP_ENV}" \
+            DOMAIN="${DOMAIN}" \
+            BACKEND_BIND_PORT="${BACKEND_BIND_PORT}" \
+            FRONTEND_BIND_PORT="${FRONTEND_BIND_PORT}" \
+            NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}" \
+            DATABASE_URL="${DATABASE_URL}" \
+            REDIS_URL="${REDIS_URL}" \
+            JWT_SECRET="${JWT_SECRET}" \
+            JWT_EXPIRY="${JWT_EXPIRY}" \
+            ADMIN_LOGIN="${ADMIN_LOGIN}" \
+            ADMIN_JWT_EXPIRY="${ADMIN_JWT_EXPIRY}" \
+            TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}" \
+            TELEGRAM_ADMIN_CHAT_ID="${TELEGRAM_ADMIN_CHAT_ID}" \
+            TOCHKA_API_KEY="${TOCHKA_API_KEY}" \
+            TOCHKA_ACCOUNT_ID="${TOCHKA_ACCOUNT_ID}" \
+            TOCHKA_MERCHANT_ID="${TOCHKA_MERCHANT_ID}" \
+            LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL}" \
+            ./deploy/scripts/deploy.sh

@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env.backend
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    volumes:
+      - ./deploy/runtime/${APP_ENV}/uploads:/app/uploads
+    ports:
+      - "127.0.0.1:${BACKEND_BIND_PORT}:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:${FRONTEND_BIND_PORT}:3000"

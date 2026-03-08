@@ -1,0 +1,27 @@
+116 | 
+117 | Example:
+118 |   await prisma.$executeRawUnsafe(\`ALTER USER prisma WITH PASSWORD '\${password}'\`)
+119 | 
+120 | More Information: https://pris.ly/d/execute-raw
+121 | `)}var So=({clientMethod:e,activeProvider:r})=>t=>{let n="",i;if(Vn(t))n=t.sql,i={values:Wr(t.values),__prismaRawParameters__:!0};else if(Array.isArray(t)){let[o,...s]=t;n=o,i={values:Wr(s||[]),__prismaRawParameters__:!0}}else switch(r){case"sqlite":case"mysql":{n=t.sql,i={values:Wr(t.values),__prismaRawParameters__:!0};break}case"cockroachdb":case"postgresql":case"postgres":{n=t.text,i={values:Wr(t.values),__prismaRawParameters__:!0};break}case"sqlserver":{n=Vl(t),i={values:Wr(t.values),__prismaRawParameters__:!0};break}default:throw new Error(`The ${r} provider does not support ${e}`)}return i?.values?Ql(`prisma.${e}(${n}, ${i.values})`):Ql(`prisma.${e}(${n})`),{query:n,parameters:i}},Wl={requestArgsToMiddlewareArgs(e){return[e.strings,...e.values]},middlewareArgsToRequestArgs(e){let[r,...t]=e;return new ie(r,t)}},Jl={requestArgsToMiddlewareArgs(e){return[e]},middlewareArgsToRequestArgs(e){return e[0]}};function Ro(e){return function(t,n){let i,o=(s=e)=>{try{return s===void 0||s?.kind==="itx"?i??=Kl(t(s)):K
+
+PrismaClientKnownRequestError: 
+Invalid `.create()` invocation in
+C:\Projects\lowkey_web\backend\test.ts:4:4
+
+  1 import { PrismaClient } from "@prisma/client";
+  2 const db = new PrismaClient();
+  3 db.user
+→ 4   .create(
+The column `passwordHash` does not exist in the current database.
+       meta: {
+  modelName: "User",
+  column: "passwordHash",
+},
+ clientVersion: "6.19.2",
+       code: "P2022"
+
+      at handleRequestError (C:\Projects\lowkey_web\backend\node_modules\@prisma\client\runtime\library.js:121:7268)
+      at handleAndLogRequestError (C:\Projects\lowkey_web\backend\node_modules\@prisma\client\runtime\library.js:121:6593)
+      at request (C:\Projects\lowkey_web\backend\node_modules\@prisma\client\runtime\library.js:121:6300)
+
