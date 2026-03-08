@@ -107,6 +107,7 @@ const app = new Elysia()
 
   // ─── Global error handler ────────────────────────────────
   .onError(({ code, error, set }) => {
+    console.error("[API Error]", code, error);
     if (code === "VALIDATION") {
       set.status = 400;
       return { message: error.message };

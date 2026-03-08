@@ -16,7 +16,7 @@ import { redis } from "../redis";
  * Adds `user` object to the context with `userId` and `isAdmin`.
  */
 export const authMiddleware = new Elysia({ name: "auth" }).derive(
-  { as: "local" },
+  { as: "global" },
   async ({ headers, set }) => {
     const token = headers.authorization?.replace("Bearer ", "");
     if (!token) {
@@ -30,11 +30,14 @@ export const authMiddleware = new Elysia({ name: "auth" }).derive(
       throw new Error("Invalid token");
     }
 
-    // Check token blocklist (for logout)
-    const blocked = await redis.get(`token:blocklist:${payload.jti}`);
-    if (blocked) {
-      set.status = 401;
-      throw new Error("Token revoked");
+    try {
+      const blocked = await redis.get(`token:blocklist:${payload.jti}`);
+      if (blocked) {
+        set.status = 401;
+        throw new Error("Token revoked");
+      }
+    } catch (error) {
+      console.error("[Auth] Redis blocklist check failed:", error);
     }
 
     return {
@@ -45,16 +48,17 @@ export const authMiddleware = new Elysia({ name: "auth" }).derive(
 );
 
 /**
- * Admin middleware — extends authMiddleware.
+ * Admin middleware - extends authMiddleware.
  * Ensures the authenticated user has `isAdmin: true` in their JWT payload.
  * Returns 403 Forbidden if the user is not an admin.
  */
 export const adminMiddleware = new Elysia({ name: "admin-auth" })
   .use(authMiddleware)
-  .derive({ as: "local" }, async ({ user, set }) => {
+  .derive({ as: "global" }, async ({ user, set }) => {
     if (!user || !user.isAdmin) {
       set.status = 403;
       throw new Error("Forbidden");
     }
+
     return { adminUser: user };
   });
