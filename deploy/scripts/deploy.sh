@@ -168,7 +168,6 @@ deploy_stack() {
   export COMPOSE_DOCKER_CLI_BUILD=1
 
   "${compose_cmd[@]}" up -d --remove-orphans ollama backend frontend
-  "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3.5:0.8b}" || true
 
   local backend_url="http://127.0.0.1:${BACKEND_BIND_PORT}/"
   local frontend_url="http://127.0.0.1:${FRONTEND_BIND_PORT}/"
@@ -188,8 +187,9 @@ deploy_stack() {
     exit 1
   fi
 
-  for attempt in {1..24}; do
+  for attempt in {1..72}; do
     if curl -fsS "${frontend_url}" >/dev/null; then
+      "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3.5:0.8b}" || true
       return
     fi
     sleep 5
