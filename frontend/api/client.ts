@@ -205,4 +205,106 @@ export const apiClient = {
   ): Promise<T> {
     return request<T>("POST", path, formData, options, true);
   },
+
+  /**
+   * Open a streaming SSE connection to POST /user/ai/chat/stream.
+   * Returns a simple event emitter you can listen on.
+   *
+   * @example
+   * const stream = apiClient.streamChat({ message: "Hello" });
+   * stream.on("delta", (d) => console.log(d.text));
+   * stream.on("done", (d) => console.log(d));
+   */
+  streamChat(params: {
+    message: string;
+    conversationId?: string;
+    model?: string;
+    attachmentIds?: string[];
+  }): StreamHandle {
+    const listeners: Record<string, Array<(data: unknown) => void>> = {};
+
+    const handle: StreamHandle = {
+      on(event, cb) {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb as (data: unknown) => void);
+        return handle;
+      },
+      close() {
+        handle._aborted = true;
+      },
+      _aborted: false,
+    };
+
+    (async () => {
+      const token = getToken();
+      let res: Response;
+      try {
+        res = await fetch(`${API_CONFIG.baseUrl}/user/ai/chat/stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(params),
+        });
+      } catch (err) {
+        listeners["error"]?.forEach((cb) =>
+          cb({ message: (err as Error).message }),
+        );
+        return;
+      }
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        listeners["error"]?.forEach((cb) => cb({ message: "Unauthorized" }));
+        return;
+      }
+
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const j = await res.json();
+          msg = (j as { message?: string }).message ?? msg;
+        } catch {}
+        listeners["error"]?.forEach((cb) => cb({ message: msg }));
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentEvent = "";
+
+      while (!handle._aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6)) as unknown;
+              if (currentEvent) {
+                listeners[currentEvent]?.forEach((cb) => cb(data));
+              }
+            } catch {}
+            currentEvent = "";
+          }
+        }
+      }
+    })();
+
+    return handle;
+  },
 } as const;
+
+/** Opaque handle returned by streamChat */
+export interface StreamHandle {
+  on(event: string, cb: (data: unknown) => void): StreamHandle;
+  close(): void;
+  _aborted: boolean;
+}

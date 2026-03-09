@@ -1,121 +1,157 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import Link from "next/link";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpRight,
-  Bot,
   Brain,
-  ChevronDown,
-  ChevronsUpDown,
+  ChevronRight,
   Copy,
   Check,
-  CreditCard,
-  Download,
-  ExternalLink,
-  FileUp,
   Globe,
-  LogOut,
-  Menu,
-  MessageSquarePlus,
-  Moon,
+  Link2,
+  Mic,
+  MicOff,
   Paperclip,
-  PanelRight,
-  PanelRightClose,
+  Plus,
   Search,
-  Shield,
+  Send,
   Sparkles,
-  Sun,
-  VenetianMask,
   X,
+  FileText,
   Image as ImageIcon,
+  File,
+  Download,
   Zap,
+  Crown,
+  ChevronsUpDown,
+  LogOut,
+  Moon,
+  Sun,
+  CreditCard,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LandingHeader } from "@/components/landing-header";
-import { LandingFooter } from "@/components/landing-footer";
-import { AiMarkdown } from "@/components/ai-markdown";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Progress } from "@/components/ui/progress";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Loader } from "@/components/ui/loader";
-import { apiClient, ApiClientError } from "@/api/client";
-import type {
-  AiChatMessage,
-  AiChatResponse,
-  AiConversationDetail,
-  AiConversationListItem,
-  AiFileItem,
-  AiPublicConfig,
-  AiUserState,
-} from "@/api/types";
 import { useAuth } from "@/hooks/useAuth";
-import { useUser } from "@/hooks/useUser";
 import { useTheme } from "@/hooks/useTheme";
-import { cn } from "@/lib/utils";
+import { apiClient } from "@/api/client";
+import type { StreamHandle } from "@/api/client";
+import { AiMarkdown } from "@/components/ai-markdown";
+import type {
+  AiUserState,
+  AiConversationDetail,
+  AiChatMessage,
+  AiFileItem,
+} from "@/api/types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatTokens(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return value.toLocaleString("ru-RU");
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ToolEvent {
+  name: string;
+  args?: string;
+  result?: unknown;
+  status: "loading" | "done" | "error";
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+interface StreamingState {
+  content: string;
+  reasoning: string;
+  toolEvents: ToolEvent[];
 }
 
-function getDayKey(iso: string): "today" | "yesterday" | "week" | "earlier" {
+interface LocalAttachment {
+  id: string;
+  file: File;
+  previewUrl?: string;
+  uploadedId?: string;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string) {
   const d = new Date(iso);
   const now = new Date();
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diff === 0) return "today";
-  if (diff === 1) return "yesterday";
-  if (diff < 7) return "week";
-  return "earlier";
+  const diff = (now.getTime() - d.getTime()) / 1000;
+  if (diff < 60) return "только что";
+  if (diff < 3600) return `${Math.floor(diff / 60)} мин`;
+  if (diff < 86400)
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-const DAY_LABELS: Record<string, string> = {
-  today: "Сегодня",
-  yesterday: "Вчера",
-  week: "На этой неделе",
-  earlier: "Раньше",
-};
+function groupConversationsByDate(convs: AiUserState["conversations"]) {
+  const groups: Record<string, AiUserState["conversations"]> = {};
+  const now = new Date();
+  for (const c of convs) {
+    const d = new Date(c.updatedAt);
+    const diff = (now.getTime() - d.getTime()) / 86400000;
+    let label: string;
+    if (diff < 1) label = "Сегодня";
+    else if (diff < 2) label = "Вчера";
+    else if (diff < 7) label = "На этой неделе";
+    else label = "Раньше";
+    if (!groups[label]) groups[label] = [];
+    groups[label].push(c);
+  }
+  return Object.entries(groups);
+}
+
+function getFileIcon(mime: string) {
+  if (mime.startsWith("image/")) return <ImageIcon className="h-4 w-4" />;
+  if (mime.includes("pdf")) return <FileText className="h-4 w-4" />;
+  return <File className="h-4 w-4" />;
+}
+
+function getToolLabel(name: string) {
+  if (name === "duckduckgo_search") return "Поиск в сети";
+  if (name === "smart_fetch_url") return "Открытие страницы";
+  if (name === "create_artifact") return "Создание файла";
+  return name;
+}
+
+function getToolIcon(name: string) {
+  if (name === "duckduckgo_search") return <Search className="h-3.5 w-3.5" />;
+  if (name === "smart_fetch_url") return <Link2 className="h-3.5 w-3.5" />;
+  if (name === "create_artifact") return <File className="h-3.5 w-3.5" />;
+  return <Globe className="h-3.5 w-3.5" />;
+}
 
 // ─── Typing dots ──────────────────────────────────────────────────────────────
-function TypingDots({ size = "md" }: { size?: "sm" | "md" }) {
-  const sz = size === "sm" ? "h-1.5 w-1.5" : "h-2 w-2";
+
+function TypingDots() {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 py-1">
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className={cn("rounded-full bg-current opacity-60", sz)}
-          animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: "easeInOut" }}
+          className="h-2 w-2 rounded-full bg-muted-foreground/60"
+          animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
         />
       ))}
     </div>
@@ -123,70 +159,109 @@ function TypingDots({ size = "md" }: { size?: "sm" | "md" }) {
 }
 
 // ─── Thinking block ───────────────────────────────────────────────────────────
-function ThinkingBlock({
-  reasoning,
-  isStreaming,
-}: {
-  reasoning: string;
-  isStreaming?: boolean;
-}) {
+
+function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  const words = reasoning.split(/\s+/).length;
+  const words = text.trim().split(/\s+/).length;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-3 overflow-hidden rounded-xl border border-violet-500/20 bg-violet-500/5"
-    >
+    <div className="mb-3 overflow-hidden rounded-xl border border-violet-500/20 bg-violet-500/5">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-violet-500/5"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left"
       >
-        {/* Spinning brain or static */}
         <motion.div
-          animate={isStreaming ? { rotate: [0, 360] } : { rotate: 0 }}
-          transition={isStreaming ? { duration: 2, repeat: Infinity, ease: "linear" } : {}}
-          className="shrink-0"
+          animate={{ rotate: open ? 360 : 0 }}
+          transition={{
+            duration: 0.6,
+            repeat: open ? Infinity : 0,
+            ease: "linear",
+          }}
         >
-          <Brain className="h-3.5 w-3.5 text-violet-500" />
+          <Brain className="h-4 w-4 text-violet-400" />
         </motion.div>
-
-        <span className="font-medium text-violet-600 dark:text-violet-400">
-          {isStreaming ? "Анализирую" : "Мыслительный процесс"}
+        <span className="flex-1 text-sm font-medium text-violet-300">
+          Размышление
         </span>
-
-        {isStreaming ? (
-          <span className="text-violet-500">
-            <TypingDots size="sm" />
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground/60">{words} слов</span>
-        )}
-
-        <motion.div
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
-          className="ml-auto shrink-0"
-        >
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-        </motion.div>
+        <span className="text-xs text-violet-500">{words} слов</span>
+        <ChevronRight
+          className={`h-4 w-4 text-violet-400 transition-transform ${open ? "rotate-90" : ""}`}
+        />
       </button>
-
-      <AnimatePresence initial={false}>
+      <AnimatePresence>
         {open && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            style={{ overflow: "hidden" }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
           >
-            <div className="border-t border-violet-500/10 px-4 py-3">
-              <p className="whitespace-pre-wrap text-xs leading-6 text-muted-foreground">
-                {reasoning}
+            <div className="max-h-64 overflow-y-auto border-t border-violet-500/20 px-4 py-3">
+              <p className="whitespace-pre-wrap text-xs leading-6 text-violet-300/80">
+                {text}
               </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Tool call card ───────────────────────────────────────────────────────────
+
+function ToolCallCard({ event }: { event: ToolEvent }) {
+  const [open, setOpen] = useState(false);
+  let queryLabel = "";
+  try {
+    const args = JSON.parse(event.args ?? "{}") as Record<string, string>;
+    queryLabel = args.query ?? args.url ?? args.title ?? "";
+  } catch {}
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-2 overflow-hidden rounded-lg border border-border/40 bg-muted/30"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        <span className="text-muted-foreground">{getToolIcon(event.name)}</span>
+        <span className="flex-1 text-xs font-medium text-foreground">
+          {getToolLabel(event.name)}
+        </span>
+        {queryLabel && (
+          <span className="max-w-[140px] truncate text-xs text-muted-foreground">
+            {queryLabel}
+          </span>
+        )}
+        {event.status === "loading" ? (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="h-3.5 w-3.5 rounded-full border-2 border-primary/40 border-t-primary"
+          />
+        ) : (
+          <Check className="h-3.5 w-3.5 text-green-400" />
+        )}
+      </button>
+      <AnimatePresence>
+        {open && Boolean(event.result) && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="max-h-48 overflow-y-auto border-t border-border/40 px-3 py-2">
+              <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
+                {JSON.stringify(event.result, null, 2)}
+              </pre>
             </div>
           </motion.div>
         )}
@@ -195,1187 +270,1308 @@ function ThinkingBlock({
   );
 }
 
-// ─── Web search pill ──────────────────────────────────────────────────────────
-function SearchPill({ query }: { query?: string }) {
+// ─── Artifact card ────────────────────────────────────────────────────────────
+
+function ArtifactCard({ artifact }: { artifact: AiFileItem }) {
   return (
     <motion.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-500/25 bg-sky-500/8 px-3 py-1.5 text-xs font-medium text-sky-600 dark:text-sky-400"
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="mt-3 flex items-center gap-3 overflow-hidden rounded-xl border border-border/50 bg-muted/30 px-4 py-3"
     >
-      <motion.div
-        animate={{ rotate: [0, 360] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <FileText className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{artifact.fileName}</p>
+        <p className="text-xs text-muted-foreground">{artifact.mimeType}</p>
+      </div>
+      <a
+        href={artifact.blobUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <Globe className="h-3 w-3" />
-      </motion.div>
-      Поиск: <span className="font-semibold">{query || "в интернете"}</span>
+        <Download className="h-4 w-4" />
+      </a>
     </motion.div>
   );
 }
 
-// ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({
-  message,
-  isStreaming,
+// ─── Attachment chip ──────────────────────────────────────────────────────────
+
+function AttachmentChip({
+  attachment,
+  onRemove,
 }: {
-  message: AiChatMessage;
-  isStreaming?: boolean;
+  attachment: LocalAttachment;
+  onRemove: () => void;
 }) {
-  const isUser = message.role === "user";
-  const [copied, setCopied] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
-  const searchQuery = useMemo(() => {
-    if (!message.toolEvents) return null;
-    try {
-      const events = message.toolEvents as Array<{ type: string; query?: string }>;
-      return events.find((e) => e.type === "web_search")?.query ?? null;
-    } catch {
-      return null;
-    }
-  }, [message.toolEvents]);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [message.content]);
-
+  const isImage = attachment.file.type.startsWith("image/");
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-      className={cn("group flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      initial={{ opacity: 0, scale: 0.8, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.8, y: 8 }}
+      className="relative flex items-center gap-2 overflow-hidden rounded-xl border border-border/50 bg-muted/60 px-3 py-2 pr-8"
     >
-      {/* AI avatar */}
-      {!isUser && (
-        <div className="mt-5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/20">
-          <Bot className="h-4 w-4 text-primary" />
+      {isImage && attachment.previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={attachment.previewUrl}
+          alt=""
+          className="h-8 w-8 rounded-md object-cover"
+        />
+      ) : (
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          {getFileIcon(attachment.file.type)}
         </div>
       )}
-
-      <div className={cn("min-w-0 max-w-[82%]", isUser ? "flex flex-col items-end" : "flex flex-col items-start")}>
-        {/* Header row */}
-        <div
-          className={cn(
-            "mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest",
-            isUser ? "text-muted-foreground/70" : "text-primary/60",
-          )}
-        >
-          {isUser ? "Вы" : "lowkey AI"}
-          {!isUser && message.model && (
-            <span className="rounded border border-border/40 bg-muted/40 px-1.5 py-0.5 text-[10px] normal-case font-normal tracking-normal text-muted-foreground/70">
-              {message.model.split("/").pop()}
-            </span>
-          )}
-          {/* Timestamp fades in on hover */}
-          <AnimatePresence>
-            {hovered && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="font-normal normal-case tracking-normal text-muted-foreground/40"
-              >
-                {formatTime(message.createdAt)}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Web search */}
-        {searchQuery && <SearchPill query={searchQuery} />}
-
-        {/* Thinking */}
-        {message.reasoning && !isUser && (
-          <ThinkingBlock reasoning={message.reasoning} isStreaming={isStreaming} />
-        )}
-
-        {/* Bubble */}
-        <div
-          className={cn(
-            "relative w-full rounded-2xl px-4 py-3 text-sm leading-7 shadow-sm",
-            isUser
-              ? "rounded-tr-sm bg-gradient-to-br from-primary/12 to-primary/6 ring-1 ring-primary/20"
-              : "rounded-tl-sm bg-card ring-1 ring-border/40",
-          )}
-        >
-          {isStreaming && !message.content ? (
-            <span className="text-muted-foreground">
-              <TypingDots />
-            </span>
-          ) : isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <AiMarkdown content={message.content} />
-          )}
-        </div>
-
-        {/* Footer: tokens + copy */}
-        {!isUser && (
-          <div className="mt-1.5 flex items-center gap-3">
-            {message.totalTokens ? (
-              <span className="text-[10px] text-muted-foreground/40">
-                <Zap className="mr-0.5 inline h-2.5 w-2.5" />
-                {message.totalTokens.toLocaleString("ru-RU")} токенов
-              </span>
-            ) : null}
-
-            {/* Copy button - fades in on hover */}
-            <AnimatePresence>
-              {hovered && message.content && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
-                  transition={{ duration: 0.15 }}
-                  type="button"
-                  onClick={handleCopy}
-                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground/60 transition-colors hover:bg-muted/50 hover:text-foreground"
-                >
-                  {copied ? (
-                    <><Check className="h-2.5 w-2.5 text-green-500" /> Скопировано</>
-                  ) : (
-                    <><Copy className="h-2.5 w-2.5" /> Копировать</>
-                  )}
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
+      <div className="min-w-0">
+        <p className="max-w-[120px] truncate text-xs font-medium">
+          {attachment.file.name}
+        </p>
+        <p className="text-[10px] text-muted-foreground">
+          {(attachment.file.size / 1024).toFixed(0)} KB
+        </p>
       </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute right-1.5 top-1.5 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-destructive/20 hover:text-destructive"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </motion.div>
   );
 }
 
-// ─── Grouped conversation list ────────────────────────────────────────────────
-function ConversationList({
-  items,
-  activeId,
-  onSelect,
-}: {
-  items: AiConversationListItem[];
-  activeId?: string;
-  onSelect: (id: string) => void;
-}) {
-  if (!items.length) {
-    return (
-      <div className="py-10 text-center text-xs text-muted-foreground">
-        Нет диалогов
-      </div>
-    );
-  }
+// ─── Audio equalizer ──────────────────────────────────────────────────────────
 
-  // Group by day
-  const groups = items.reduce<Record<string, AiConversationListItem[]>>((acc, item) => {
-    const key = getDayKey(item.updatedAt);
-    (acc[key] ??= []).push(item);
-    return acc;
-  }, {});
-
-  const order: Array<"today" | "yesterday" | "week" | "earlier"> = [
-    "today",
-    "yesterday",
-    "week",
-    "earlier",
-  ];
-
+function AudioEqualizer({ frequencies }: { frequencies: number[] }) {
   return (
-    <div className="space-y-4">
-      {order.map((key) => {
-        const list = groups[key];
-        if (!list?.length) return null;
-        return (
-          <div key={key}>
-            <div className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-              {DAY_LABELS[key]}
-            </div>
-            <div className="space-y-0.5">
-              {list.map((item, i) => {
-                const isActive = activeId === item.id;
-                return (
-                  <motion.button
-                    key={item.id}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.025, duration: 0.18 }}
-                    type="button"
-                    onClick={() => onSelect(item.id)}
-                    className={cn(
-                      "group relative flex w-full flex-col rounded-xl px-3 py-2.5 text-left transition-all",
-                      isActive
-                        ? "bg-primary/10 ring-1 ring-primary/20"
-                        : "hover:bg-muted/60",
-                    )}
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeConv"
-                        className="absolute inset-0 rounded-xl bg-primary/8 ring-1 ring-primary/20"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
-                      />
-                    )}
-                    <div className="relative flex items-center justify-between gap-2">
-                      <span className={cn(
-                        "truncate text-sm font-medium",
-                        isActive ? "text-primary" : "text-foreground",
-                      )}>
-                        {item.title}
-                      </span>
-                    </div>
-                    {item.lastMessage && (
-                      <span className="relative mt-0.5 truncate text-xs text-muted-foreground/60">
-                        {item.lastMessage}
-                      </span>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+    <div className="flex h-4 items-end gap-[2px]">
+      {frequencies.map((v, i) => (
+        <motion.div
+          key={i}
+          className="w-[3px] rounded-full bg-current"
+          style={{ height: Math.max(3, v * 16) }}
+          animate={{ height: Math.max(3, v * 16) }}
+          transition={{ duration: 0.05, ease: "linear" }}
+        />
+      ))}
     </div>
   );
 }
 
-// ─── Sidebar content (reused for desktop + mobile sheet) ─────────────────────
-function SidebarContent({
-  user,
-  state,
-  conversation,
-  quotaLabel,
-  sidebarSearch,
-  setSidebarSearch,
-  onCreateConversation,
-  onSelectConversation,
-  onLogout,
-  filteredConversations,
-}: {
-  user: { login: string; avatarHash: string } | null;
-  state: AiUserState | null;
-  conversation: AiConversationDetail | null;
-  quotaLabel: string | null;
-  sidebarSearch: string;
-  setSidebarSearch: (v: string) => void;
-  onCreateConversation: () => void;
-  onSelectConversation: (id: string) => void;
-  onLogout: () => void;
-  filteredConversations: AiConversationListItem[];
-}) {
-  const { profile } = useUser();
-  const { theme, toggleTheme } = useTheme();
-  const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+// ─── Message bubble ───────────────────────────────────────────────────────────
 
-  const avatarHue = user ? parseInt(user.avatarHash.substring(0, 6) || "0", 16) % 360 : 0;
+function MessageBubble({
+  message,
+  streaming,
+}: {
+  message?: AiChatMessage;
+  streaming?: StreamingState;
+}) {
+  const isUser = message?.role === "user";
+  const isStreamingMsg = !message && !!streaming;
+  const [hovering, setHovering] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const toolEventsRaw = message?.toolEvents;
+  const artifactsRaw = message?.artifacts;
+
+  const content = message?.content ?? streaming?.content ?? "";
+  const reasoning = message?.reasoning ?? streaming?.reasoning;
+  const toolEvents = (
+    isStreamingMsg
+      ? streaming?.toolEvents
+      : Array.isArray(toolEventsRaw)
+      ? toolEventsRaw
+      : []
+  ) as ToolEvent[];
+  const artifacts = (Array.isArray(artifactsRaw) ? artifactsRaw : []) as AiFileItem[];
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [content]);
+
+  if (isUser) {
+    const attRaw = message?.attachments;
+    const attachments = (
+      Array.isArray(attRaw) ? attRaw : []
+    ) as Array<{ fileName: string; mimeType: string; blobUrl: string }>;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex w-full justify-end"
+      >
+        <div className="max-w-[80%]">
+          {attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-2">
+              {attachments.map((a, i) => (
+                <a
+                  key={i}
+                  href={a.blobUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/60 px-3 py-2 text-xs hover:bg-muted"
+                >
+                  {getFileIcon(a.mimeType)}
+                  <span className="max-w-[100px] truncate">{a.fileName}</span>
+                </a>
+              ))}
+            </div>
+          )}
+          <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-primary-foreground">
+            <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>
+          </div>
+          <p className="mt-1 text-right text-[10px] text-muted-foreground">
+            {message?.createdAt ? formatDate(message.createdAt) : ""}
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="w-full"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      {toolEvents.length > 0 && (
+        <div className="mb-3">
+          {toolEvents.map((te, i) => (
+            <ToolCallCard key={i} event={te} />
+          ))}
+        </div>
+      )}
+
+      {reasoning && <ThinkingBlock text={reasoning} />}
+
+      <div className="w-full text-foreground">
+        {isStreamingMsg && !content ? (
+          <TypingDots />
+        ) : (
+          <AiMarkdown content={content} />
+        )}
+      </div>
+
+      {artifacts.map((a) => (
+        <ArtifactCard key={a.id} artifact={a} />
+      ))}
+
+      <div className="mt-1 flex items-center gap-2">
+        <AnimatePresence>
+          {hovering && !isStreamingMsg && content && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {copied ? (
+                  <Check className="h-3 w-3 text-green-400" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {!isStreamingMsg && message?.model && (
+          <span className="text-[10px] text-muted-foreground/50">
+            {message.model}
+          </span>
+        )}
+        {!isStreamingMsg && message?.createdAt && (
+          <span className="text-[10px] text-muted-foreground/40">
+            {formatDate(message.createdAt)}
+          </span>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Subscription panel ───────────────────────────────────────────────────────
+
+function SubscriptionPanel({ state }: { state: AiUserState | null }) {
+  const router = useRouter();
+  if (!state) return null;
+
+  const { quota, subscription } = state;
+  const used = quota.includedLimit - quota.includedRemaining;
+  const pct = quota.includedLimit > 0 ? (used / quota.includedLimit) * 100 : 0;
+  const hasSubscription = !!subscription;
+  const planName = subscription?.title ?? "Без подписки";
+  const tierColor =
+    subscription?.tier === "max"
+      ? "text-amber-400"
+      : subscription?.tier === "ai"
+      ? "text-violet-400"
+      : "text-muted-foreground";
+
+  return (
+    <div className="mx-3 mb-2 overflow-hidden rounded-xl border border-border/40 bg-muted/20 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {subscription?.tier === "max" ? (
+            <Crown className="h-3.5 w-3.5 text-amber-400" />
+          ) : (
+            <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <span className={`text-xs font-semibold ${tierColor}`}>{planName}</span>
+        </div>
+        {quota.purchasedTokens > 0 && (
+          <span className="font-mono text-[10px] text-primary/70">
+            +{(quota.purchasedTokens / 1000).toFixed(0)}K купл.
+          </span>
+        )}
+      </div>
+      <div className="mb-3 space-y-1">
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>Токены</span>
+          <span>
+            {(used / 1000).toFixed(0)}K /{" "}
+            {(quota.includedLimit / 1000).toFixed(0)}K
+          </span>
+        </div>
+        <Progress value={pct} className="h-1.5" />
+      </div>
+      <Button
+        size="sm"
+        variant={hasSubscription ? "outline" : "default"}
+        className="h-7 w-full text-xs"
+        onClick={() => router.push("/me/billing")}
+      >
+        {hasSubscription ? "Улучшить" : "Оформить подписку"}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Conversation list ────────────────────────────────────────────────────────
+
+function ConversationList({
+  conversations,
+  activeId,
+  onSelect,
+}: {
+  conversations: AiUserState["conversations"];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const groups = useMemo(
+    () => groupConversationsByDate(conversations),
+    [conversations],
+  );
+
+  if (!conversations.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <Sparkles className="mb-3 h-8 w-8 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">Нет диалогов</p>
+        <p className="text-xs text-muted-foreground/60">Начните новый чат</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map(([label, items]) => (
+        <div key={label}>
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+            {label}
+          </p>
+          {items.map((conv) => {
+            const isActive = conv.id === activeId;
+            return (
+              <button
+                key={conv.id}
+                type="button"
+                onClick={() => onSelect(conv.id)}
+                className={`group relative w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                }`}
+              >
+                <p className="truncate text-sm font-medium leading-tight">
+                  {conv.title}
+                </p>
+                {conv.lastMessage && (
+                  <p className="mt-0.5 truncate text-[11px] opacity-60">
+                    {conv.lastMessage}
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sidebar profile (mirrors NavUser) ───────────────────────────────────────
+
+function SidebarProfile({ state }: { state: AiUserState | null }) {
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => setMounted(true), []);
+
+  const displayUser = user ?? { login: "guest", avatarHash: "aabbcc" };
+  const avatarHue =
+    parseInt(displayUser.avatarHash.substring(0, 6) || "0", 16) % 360;
   const avatarColor = `hsl(${avatarHue}, 85%, 55%)`;
 
-  // Token usage %
-  const usagePct = useMemo(() => {
-    if (!state) return 0;
-    const { quota } = state;
-    const used = quota.includedLimit - quota.includedRemaining + quota.usedIncluded;
-    const total = quota.includedLimit + quota.purchasedTokens;
-    if (!total) return 0;
-    return Math.min(100, Math.round((used / total) * 100));
-  }, [state]);
+  if (!mounted) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 transition-colors hover:bg-muted/60"
+        >
+          <Avatar className="h-8 w-8 rounded-lg">
+            <AvatarFallback
+              className="rounded-lg text-sm font-bold text-primary-foreground"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {displayUser.login.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-semibold">{displayUser.login}</p>
+            {state && (
+              <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                <span className={state.subscription ? "text-primary" : ""}>
+                  {state.subscription?.title ?? "Без подписки"}
+                </span>
+                <span className="shrink-0 rounded-md border border-primary/20 bg-primary/10 px-1 text-[10px] text-primary">
+                  {(state.quota.totalAvailable / 1000).toFixed(0)}K ток.
+                </span>
+              </p>
+            )}
+          </div>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        className="w-56 rounded-xl"
+        sideOffset={4}
+      >
+        <DropdownMenuLabel className="p-0 font-normal">
+          <div className="flex items-center gap-2 px-1 py-1.5">
+            <Avatar className="h-8 w-8 rounded-lg">
+              <AvatarFallback
+                className="rounded-lg font-bold text-primary-foreground"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {displayUser.login.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="truncate text-sm font-semibold">
+                {displayUser.login}
+              </p>
+              <p className="font-mono text-xs text-muted-foreground">
+                Токены: {(state?.quota.totalAvailable ?? 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
+          {theme === "dark" ? (
+            <Sun className="mr-2 h-4 w-4" />
+          ) : (
+            <Moon className="mr-2 h-4 w-4" />
+          )}
+          {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => router.push("/me/billing")}
+          className="cursor-pointer"
+        >
+          <CreditCard className="mr-2 h-4 w-4" />
+          Кошелёк
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="cursor-pointer font-medium text-destructive focus:text-destructive"
+          onClick={() => {
+            logout();
+            router.push("/");
+          }}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Выйти
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ─── Sidebar content ──────────────────────────────────────────────────────────
+
+function SidebarContent({
+  state,
+  activeConvId,
+  onNewChat,
+  onSelectConv,
+  onClose,
+}: {
+  state: AiUserState | null;
+  activeConvId: string | null;
+  onNewChat: () => void;
+  onSelectConv: (id: string) => void;
+  onClose?: () => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!state?.conversations) return [];
+    if (!search.trim()) return state.conversations;
+    const q = search.toLowerCase();
+    return state.conversations.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.lastMessage?.toLowerCase().includes(q),
+    );
+  }, [state?.conversations, search]);
 
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/25">
-          <VenetianMask className="h-4 w-4" />
-        </div>
-        <div>
-          <div className="text-[15px] font-bold tracking-tight">lowkey AI</div>
-          <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
-            workspace
+      <div className="flex items-center gap-3 px-4 pb-3 pt-5">
+        <Link href="/" onClick={onClose} className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/20">
+            <Brain className="h-4 w-4" />
           </div>
-        </div>
+          <div>
+            <p className="text-[15px] font-bold leading-tight tracking-tight">
+              lowkey
+            </p>
+            <p className="text-[9px] font-medium uppercase tracking-widest text-muted-foreground">
+              AI Workspace
+            </p>
+          </div>
+        </Link>
       </div>
 
       {/* New chat */}
       <div className="px-3 pb-3">
         <Button
-          onClick={onCreateConversation}
-          className="h-9 w-full justify-start gap-2 rounded-xl text-sm shadow-sm"
+          variant="outline"
+          size="sm"
+          className="w-full justify-start gap-2"
+          onClick={() => {
+            onNewChat();
+            onClose?.();
+          }}
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <Plus className="h-4 w-4" />
           Новый чат
         </Button>
       </div>
 
       {/* Search */}
       <div className="px-3 pb-3">
-        <div className={cn(
-          "flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 transition-colors",
-          sidebarSearch ? "border-primary/30 bg-primary/5" : "border-border/40 hover:border-border/70",
-        )}>
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+        <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-2">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
-            type="text"
-            placeholder="Поиск..."
-            value={sidebarSearch}
-            onChange={(e) => setSidebarSearch(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по чатам..."
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
           />
-          {sidebarSearch && (
-            <button
-              type="button"
-              onClick={() => setSidebarSearch("")}
-              className="rounded p-0.5 text-muted-foreground/50 hover:text-foreground"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Chat list scrollable */}
-      <div className="flex-1 overflow-y-auto px-3 pb-2">
+      {/* Conversations */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-1">
         <ConversationList
-          items={filteredConversations}
-          activeId={conversation?.id}
-          onSelect={onSelectConversation}
+          conversations={filtered}
+          activeId={activeConvId}
+          onSelect={(id) => {
+            onSelectConv(id);
+            onClose?.();
+          }}
         />
       </div>
 
-      {/* Token meter */}
-      {state && (
-        <div className="mx-3 mb-3 rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5">
-          <div className="mb-1.5 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground/70">Токены</span>
-            <span className="font-semibold text-foreground/80">{quotaLabel}</span>
-          </div>
-          <Progress value={100 - usagePct} className="h-1.5" />
-          <div className="mt-1 text-[10px] text-muted-foreground/40">
-            {usagePct}% использовано
-          </div>
-        </div>
-      )}
+      {/* Subscription */}
+      <SubscriptionPanel state={state} />
 
       {/* Profile */}
-      <div className="border-t border-border/40 px-3 py-3">
-        {user && mounted && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none"
-              >
-                <Avatar className="h-8 w-8 shrink-0 rounded-lg">
-                  <AvatarFallback
-                    className="rounded-lg text-sm font-bold text-white"
-                    style={{ backgroundColor: avatarColor }}
-                  >
-                    {user.login.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">{user.login}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
-                    <span className={cn(profile?.subscription && "text-primary")}>
-                      {profile?.subscription ? profile.subscription.planName : "Free"}
-                    </span>
-                    {profile?.balance !== undefined && (
-                      <span className="rounded border border-primary/20 bg-primary/8 px-1 text-[10px] text-primary">
-                        {profile.balance} ₽
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-xl" side="top" align="start" sideOffset={4}>
-              <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-2 py-2">
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarFallback
-                      className="rounded-lg text-sm font-bold text-white"
-                      style={{ backgroundColor: avatarColor }}
-                    >
-                      {user.login.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid flex-1 text-sm">
-                    <span className="font-semibold">{user.login}</span>
-                    <span className="text-xs text-muted-foreground">{quotaLabel}</span>
-                  </div>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
-                  {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-                  {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/me/billing")} className="cursor-pointer">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Кошелёк
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild className="cursor-pointer">
-                  <Link href="/me">
-                    <Shield className="mr-2 h-4 w-4" />
-                    Панель VPN
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="cursor-pointer font-medium text-destructive focus:text-destructive"
-                onClick={onLogout}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Выйти
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      <div className="border-t border-border/40 px-3 pb-4 pt-3">
+        <SidebarProfile state={state} />
       </div>
     </div>
   );
 }
 
-// ─── Auth gate ────────────────────────────────────────────────────────────────
-function AuthGate({ config }: { config: AiPublicConfig | null }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <LandingHeader />
-      <main className="mx-auto flex min-h-[calc(100vh-80px)] max-w-7xl flex-col justify-center px-4 py-16 md:px-8">
-        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-          <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-4 py-2 text-sm font-medium text-muted-foreground">
-              <Sparkles className="h-4 w-4 text-primary" />
-              lowkey AI
-            </div>
-            <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-6xl">
-              AI-рабочее пространство в стиле ChatGPT внутри lowkey
-            </h1>
-            <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-              Один аккаунт для VPN и AI. Чаты, поиск по сайтам, работа с файлами,
-              генерация артефактов без выхода из сервиса.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild className="h-12 rounded-2xl px-6 text-base">
-                <Link href="/?auth=register">
-                  Начать работу
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="h-12 rounded-2xl px-6 text-base">
-                <Link href="/legal/ai-offer">Оферта AI</Link>
-              </Button>
-            </div>
-          </div>
+// ─── Canvas panel ─────────────────────────────────────────────────────────────
 
-          <div className="rounded-[2rem] border border-border/60 bg-card p-6 shadow-sm">
-            <div className="space-y-5">
-              <div className="rounded-3xl bg-zinc-950 p-5 text-zinc-50">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="rounded-2xl bg-white/10 p-2">
-                    <Bot className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="font-semibold">lowkey AI</div>
-                    <div className="text-sm text-zinc-400">Поиск, файлы, артефакты, markdown</div>
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-4 text-sm leading-7 text-zinc-200">
-                  <p>"Собери сравнение 5 VPN-протоколов, найди источники и сделай таблицу CSV"</p>
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Free</div>
-                  <div className="mt-2 text-2xl font-black">{config ? formatTokens(config.freeMonthlyTokens) : "500K"}</div>
-                  <div className="text-sm text-muted-foreground">токенов без подписки</div>
-                </div>
-                {config?.plans.slice(0, 2).map((plan) => (
-                  <div key={plan.slug} className="rounded-2xl border border-border/60 bg-muted/30 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{plan.title}</div>
-                    <div className="mt-2 text-2xl font-black">{plan.price} ₽</div>
-                    <div className="text-sm text-muted-foreground">
-                      {plan.monthlyTokens ? `${formatTokens(plan.monthlyTokens)} токенов` : "Гибкие лимиты"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-      <LandingFooter />
+function CanvasPanel({
+  content,
+  onClose,
+}: {
+  content: string;
+  onClose: () => void;
+}) {
+  const [localContent, setLocalContent] = useState(content);
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
+        <span className="text-sm font-semibold">Холст</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <textarea
+        value={localContent}
+        onChange={(e) => setLocalContent(e.target.value)}
+        className="flex-1 resize-none bg-transparent p-4 font-mono text-sm outline-none"
+        spellCheck={false}
+      />
     </div>
   );
 }
 
+// ─── Quick prompts ────────────────────────────────────────────────────────────
+
+const QUICK_PROMPTS = [
+  { emoji: "📊", text: "Построй график данных" },
+  { emoji: "📝", text: "Напиши краткое эссе" },
+  { emoji: "🔍", text: "Найди информацию в сети" },
+  { emoji: "💡", text: "Объясни концепцию" },
+];
+
 // ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function AiPage() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-  const [config, setConfig] = useState<AiPublicConfig | null>(null);
-  const [state, setState] = useState<AiUserState | null>(null);
-  const [conversation, setConversation] = useState<AiConversationDetail | null>(null);
-  const [draft, setDraft] = useState("");
-  const [isBootLoading, setIsBootLoading] = useState(true);
-  const [isSending, setIsSending] = useState(false);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [artifacts, setArtifacts] = useState<AiFileItem[]>([]);
-  const [selectedArtifact, setSelectedArtifact] = useState<AiFileItem | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<AiFileItem[]>([]);
-  const [showCanvas, setShowCanvas] = useState(false);
-  const [sidebarSearch, setSidebarSearch] = useState("");
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const hasCanvas = artifacts.length > 0;
+  // State
+  const [aiState, setAiState] = useState<AiUserState | null>(null);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<AiChatMessage[]>([]);
+  const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [canvasContent] = useState("");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [convModel, setConvModel] = useState<string | null>(null);
 
-  // Boot load
+  // Audio state
+  const [isRecording, setIsRecording] = useState(false);
+  const [frequencies, setFrequencies] = useState<number[]>(
+    new Array(16).fill(0),
+  );
+
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const streamHandleRef = useRef<StreamHandle | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const rafRef = useRef<number>(0);
+
+  // Bootstrap
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const publicConfig = await apiClient.get<AiPublicConfig>("/ai/config");
-        if (mounted) setConfig(publicConfig);
-        if (isAuthenticated) {
-          const userState = await apiClient.get<AiUserState>("/user/ai/state");
-          if (!mounted) return;
-          setState(userState);
-          if (userState.conversations[0]) {
-            const detail = await apiClient.get<AiConversationDetail>(
-              `/user/ai/conversations/${userState.conversations[0].id}`,
-            );
-            if (!mounted) return;
-            setConversation(detail);
-            const arts = detail.files.filter((f) => f.kind === "artifact");
-            setArtifacts(arts);
-            setSelectedArtifact(arts[0] ?? null);
-          }
-        }
-      } finally {
-        if (mounted) setIsBootLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [isAuthenticated]);
+    if (!user) {
+      router.push("/");
+      return;
+    }
+    apiClient.get<AiUserState>("/user/ai/state").then(setAiState).catch(() => {});
+  }, [user, router]);
 
-  // Scroll to bottom on new message
+  // Scroll to bottom on new content
   useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [conversation?.messages.length, isSending]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, streaming?.content]);
 
-  // Track scroll position for scroll-to-bottom button
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const handler = () => {
-      const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollBtn(fromBottom > 200);
-    };
-    el.addEventListener("scroll", handler, { passive: true });
-    return () => el.removeEventListener("scroll", handler);
+  // Load conversation
+  const loadConversation = useCallback(async (id: string) => {
+    try {
+      const detail = await apiClient.get<AiConversationDetail>(
+        `/user/ai/conversations/${id}`,
+      );
+      setMessages(detail.messages);
+      setActiveConvId(id);
+      setConvModel(detail.model);
+    } catch {
+      setError("Не удалось загрузить беседу");
+    }
   }, []);
 
-  // Auto-resize textarea
-  useEffect(() => {
+  // New chat
+  const handleNewChat = useCallback(() => {
+    setActiveConvId(null);
+    setMessages([]);
+    setStreaming(null);
+    setConvModel(null);
+    setError(null);
+  }, []);
+
+  // File handling
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      setAttachments((prev) => [
+        ...prev,
+        ...files.map((file) => ({
+          id: `local-${Date.now()}-${Math.random()}`,
+          file,
+          previewUrl: file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : undefined,
+        })),
+      ]);
+      e.target.value = "";
+    },
+    [],
+  );
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => {
+      const a = prev.find((x) => x.id === id);
+      if (a?.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  }, []);
+
+  const uploadAttachments = useCallback(
+    async (atts: LocalAttachment[]): Promise<string[]> => {
+      const ids: string[] = [];
+      for (const att of atts) {
+        if (att.uploadedId) {
+          ids.push(att.uploadedId);
+          continue;
+        }
+        const fd = new FormData();
+        fd.append("file", att.file);
+        try {
+          const res = await apiClient.upload<{ id: string }>("/user/ai/upload", fd);
+          ids.push(res.id);
+        } catch {
+          // skip
+        }
+      }
+      return ids;
+    },
+    [],
+  );
+
+  // Textarea auto-resize
+  const adjustTextarea = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [draft]);
-
-  const quotaLabel = useMemo(() => {
-    if (!state) return null;
-    return `${formatTokens(state.quota.totalAvailable)} токенов`;
-  }, [state]);
-
-  const filteredConversations = useMemo(() => {
-    if (!state?.conversations) return [];
-    if (!sidebarSearch.trim()) return state.conversations;
-    const q = sidebarSearch.toLowerCase();
-    return state.conversations.filter(
-      (c) => c.title.toLowerCase().includes(q) || c.lastMessage?.toLowerCase().includes(q),
-    );
-  }, [state?.conversations, sidebarSearch]);
-
-  const handleSelectConversation = useCallback(async (id: string) => {
-    setMobileSidebarOpen(false);
-    const detail = await apiClient.get<AiConversationDetail>(`/user/ai/conversations/${id}`);
-    setConversation(detail);
-    const arts = detail.files.filter((f) => f.kind === "artifact");
-    setArtifacts(arts);
-    setSelectedArtifact(arts[0] ?? null);
-    setShowCanvas(arts.length > 0);
   }, []);
 
-  const handleCreateConversation = useCallback(async () => {
-    setMobileSidebarOpen(false);
-    const created = await apiClient.post<{ id: string; title: string; updatedAt: string }>(
-      "/user/ai/conversations", {},
-    );
-    const nextState = await apiClient.get<AiUserState>("/user/ai/state");
-    setState(nextState);
-    setConversation({
-      id: created.id,
-      title: created.title,
-      model: null,
-      createdAt: created.updatedAt,
-      updatedAt: created.updatedAt,
-      messages: [],
-      files: [],
-    });
-    setArtifacts([]);
-    setSelectedArtifact(null);
-    setShowCanvas(false);
-  }, []);
-
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length) return;
-    const uploaded: AiFileItem[] = [];
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      if (conversation?.id) form.append("conversationId", conversation.id);
-      const item = await apiClient.upload<AiFileItem>("/user/ai/uploads", form);
-      uploaded.push(item);
-    }
-    setPendingFiles((prev) => [...prev, ...uploaded]);
-    event.target.value = "";
-  };
-
-  const handleSend = async () => {
-    if (!draft.trim() || isSending) return;
-    setIsSending(true);
-    const optimistic: AiChatMessage = {
-      id: `tmp-${Date.now()}`,
-      role: "user",
-      content: draft.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    const cur = conversation ?? {
-      id: "",
-      title: "Новый диалог",
-      model: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: [],
-      files: [],
-    };
-    setConversation({ ...cur, messages: [...cur.messages, optimistic] });
-    const msg = draft.trim();
-    setDraft("");
+  // Audio recording
+  const startRecording = useCallback(async () => {
     try {
-      const response = await apiClient.post<AiChatResponse>("/user/ai/chat", {
-        conversationId: conversation?.id,
-        message: msg,
-        attachmentIds: pendingFiles.map((f) => f.id),
-      });
-      const [detail, nextState] = await Promise.all([
-        apiClient.get<AiConversationDetail>(`/user/ai/conversations/${response.conversationId}`),
-        apiClient.get<AiUserState>("/user/ai/state"),
-      ]);
-      setState(nextState);
-      setConversation(detail);
-      const nextArts = response.artifacts;
-      setArtifacts(nextArts);
-      if (nextArts[0]) { setSelectedArtifact(nextArts[0]); setShowCanvas(true); }
-      setPendingFiles([]);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 402) setShowPaywall(true);
-    } finally {
-      setIsSending(false);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      type SpeechRecognitionCtor = new () => {
+        lang: string;
+        interimResults: boolean;
+        continuous: boolean;
+        onresult: ((e: unknown) => void) | null;
+        onend: (() => void) | null;
+        start(): void;
+        stop(): void;
+      };
+      const w = window as unknown as {
+        SpeechRecognition?: SpeechRecognitionCtor;
+        webkitSpeechRecognition?: SpeechRecognitionCtor;
+      };
+      const SRApi: SpeechRecognitionCtor | undefined =
+        w.SpeechRecognition ?? w.webkitSpeechRecognition;
+
+      if (SRApi) {
+        const rec = new SRApi() as {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          onresult: (e: unknown) => void;
+          onend: () => void;
+          start: () => void;
+          stop: () => void;
+        };
+        rec.lang = "ru-RU";
+        rec.interimResults = true;
+        rec.continuous = true;
+        rec.onresult = (e: unknown) => {
+          const event = e as { results: ArrayLike<{ 0: { transcript: string } }> };
+          const t = Array.from(event.results)
+            .map((r) => r[0].transcript)
+            .join("");
+          setInputText(t);
+        };
+        rec.onend = () => setIsRecording(false);
+        rec.start();
+        recognitionRef.current = rec;
+      }
+
+      setIsRecording(true);
+      const tick = () => {
+        if (!analyserRef.current) return;
+        const buf = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(buf);
+        setFrequencies(Array.from(buf.slice(0, 16)).map((v) => v / 255));
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch {
+      // mic unavailable
     }
-  };
+  }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-  };
+  const stopRecording = useCallback(() => {
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recognitionRef.current?.stop();
+    cancelAnimationFrame(rafRef.current);
+    setIsRecording(false);
+    setFrequencies(new Array(16).fill(0));
+  }, []);
 
-  const handlePurchase = async (plan: string) => {
-    await apiClient.post("/user/ai/purchase", { plan });
-    setState(await apiClient.get<AiUserState>("/user/ai/state"));
-    setShowPaywall(false);
-  };
+  // Send
+  const handleSend = useCallback(async () => {
+    const text = inputText.trim();
+    if (!text || isStreaming) return;
 
-  const scrollToBottom = () => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  };
+    setInputText("");
+    setError(null);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+    const currentAtts = [...attachments];
+    setAttachments([]);
+
+    const userMsg: AiChatMessage = {
+      id: `local-${Date.now()}`,
+      role: "user",
+      content: text,
+      attachments: currentAtts.map((a) => ({
+        fileName: a.file.name,
+        mimeType: a.file.type,
+        blobUrl: a.previewUrl ?? "",
+      })),
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setIsStreaming(true);
+    setStreaming({ content: "", reasoning: "", toolEvents: [] });
+
+    const attachmentIds = await uploadAttachments(currentAtts);
+
+    const handle = apiClient.streamChat({
+      message: text,
+      conversationId: activeConvId ?? undefined,
+      attachmentIds,
+      model: aiState?.settings.defaultModel,
+    });
+    streamHandleRef.current = handle;
+
+    handle.on("connected", (d) => {
+      const data = d as { conversationId: string; isNew: boolean };
+      setActiveConvId(data.conversationId);
+      if (data.isNew) {
+        apiClient
+          .get<AiUserState>("/user/ai/state")
+          .then(setAiState)
+          .catch(() => {});
+      }
+    });
+
+    handle.on("delta", (d) => {
+      const { text: chunk } = d as { text: string };
+      setStreaming((prev) =>
+        prev ? { ...prev, content: prev.content + chunk } : null,
+      );
+    });
+
+    handle.on("reasoning_delta", (d) => {
+      const { text: chunk } = d as { text: string };
+      setStreaming((prev) =>
+        prev ? { ...prev, reasoning: prev.reasoning + chunk } : null,
+      );
+    });
+
+    handle.on("tool_call", (d) => {
+      const { name, args } = d as { name: string; args: string };
+      setStreaming((prev) =>
+        prev
+          ? {
+              ...prev,
+              toolEvents: [
+                ...prev.toolEvents,
+                { name, args, status: "loading" as const },
+              ],
+            }
+          : null,
+      );
+    });
+
+    handle.on("tool_result", (d) => {
+      const { name, result } = d as { name: string; result: unknown };
+      setStreaming((prev) =>
+        prev
+          ? {
+              ...prev,
+              toolEvents: prev.toolEvents.map((te) =>
+                te.name === name && te.status === "loading"
+                  ? { ...te, result, status: "done" as const }
+                  : te,
+              ),
+            }
+          : null,
+      );
+    });
+
+    handle.on("done", (d) => {
+      const data = d as {
+        messageId: string;
+        content: string;
+        reasoning: string | null;
+        model: string;
+        toolEvents: unknown;
+        artifacts: AiFileItem[];
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+      };
+      const assistantMsg: AiChatMessage = {
+        id: data.messageId,
+        role: "assistant",
+        content: data.content,
+        reasoning: data.reasoning,
+        model: data.model,
+        toolEvents: data.toolEvents,
+        artifacts: data.artifacts as unknown,
+        inputTokens: data.inputTokens,
+        outputTokens: data.outputTokens,
+        totalTokens: data.totalTokens,
+        createdAt: new Date().toISOString(),
+      };
+      setConvModel(data.model);
+      setMessages((prev) => [...prev, assistantMsg]);
+      setStreaming(null);
+      setIsStreaming(false);
+      apiClient
+        .get<AiUserState>("/user/ai/state")
+        .then(setAiState)
+        .catch(() => {});
+    });
+
+    handle.on("error", (d) => {
+      const { message: msg } = d as { message: string };
+      setError(msg);
+      setStreaming(null);
+      setIsStreaming(false);
+    });
+  }, [
+    inputText,
+    isStreaming,
+    attachments,
+    activeConvId,
+    aiState,
+    uploadAttachments,
+  ]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
+
+  const convTitle = useMemo(() => {
+    if (!activeConvId || !aiState?.conversations) return null;
+    return (
+      aiState.conversations.find((c) => c.id === activeConvId)?.title ?? null
+    );
+  }, [activeConvId, aiState?.conversations]);
+
+  const hasInput = inputText.trim().length > 0 || attachments.length > 0;
 
   const sidebarProps = {
-    user: user ? { login: user.login, avatarHash: user.avatarHash } : null,
-    state,
-    conversation,
-    quotaLabel,
-    sidebarSearch,
-    setSidebarSearch,
-    onCreateConversation: handleCreateConversation,
-    onSelectConversation: handleSelectConversation,
-    onLogout: () => { logout(); router.push("/"); },
-    filteredConversations,
+    state: aiState,
+    activeConvId,
+    onNewChat: handleNewChat,
+    onSelectConv: loadConversation,
   };
 
-  // ── Loading ───────────────────────────────────────────────────────────────────
-  if (isBootLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
-          <Loader size={64} />
-        </motion.div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) return <AuthGate config={config} />;
-
-  // ── Layout ────────────────────────────────────────────────────────────────────
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={300}>
       <div className="flex h-screen overflow-hidden bg-background">
-
         {/* Desktop sidebar */}
-        <aside className="hidden w-[260px] shrink-0 flex-col border-r border-border/40 bg-sidebar lg:flex">
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-border/50 lg:flex">
           <SidebarContent {...sidebarProps} />
         </aside>
 
-        {/* Main area */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Mobile sidebar */}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent side="left" className="w-72 p-0">
+            <SidebarContent
+              {...sidebarProps}
+              onClose={() => setMobileOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
 
+        {/* Main area */}
+        <div className="flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <header className="flex shrink-0 items-center gap-3 border-b border-border/40 bg-background/80 px-4 py-3 backdrop-blur-xl lg:px-6">
-            {/* Mobile menu */}
-            <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl lg:hidden">
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] p-0">
-                <SidebarContent {...sidebarProps} />
-              </SheetContent>
-            </Sheet>
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/40 px-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 lg:hidden"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Brain className="h-5 w-5" />
+            </Button>
 
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-sm font-semibold">
-                {conversation?.title || "Новый чат"}
-              </h1>
-              <p className="truncate text-xs text-muted-foreground/70">
-                {state?.settings.defaultModel || config?.defaultModel}
-              </p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              {hasCanvas && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-xl"
-                      onClick={() => setShowCanvas((v) => !v)}
-                    >
-                      {showCanvas ? (
-                        <PanelRightClose className="h-4 w-4" />
-                      ) : (
-                        <PanelRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{showCanvas ? "Закрыть холст" : "Открыть холст"}</TooltipContent>
-                </Tooltip>
+              {convTitle ? (
+                <div>
+                  <p className="truncate text-sm font-semibold">{convTitle}</p>
+                  {convModel && (
+                    <p className="font-mono text-[10px] text-muted-foreground/60">
+                      {convModel}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-muted-foreground">
+                  Новый чат
+                </p>
               )}
             </div>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setCanvasOpen((v) => !v)}
+                >
+                  {canvasOpen ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {canvasOpen ? "Закрыть холст" : "Открыть холст"}
+              </TooltipContent>
+            </Tooltip>
           </header>
 
-          {/* Messages + canvas */}
-          <div className="flex flex-1 overflow-hidden">
-
-            {/* Messages area */}
-            <div className="relative flex flex-1 flex-col overflow-hidden">
-              <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto scroll-smooth px-4 py-8 lg:px-8"
-              >
-                <div className="mx-auto w-full max-w-3xl space-y-8">
-                  {conversation?.messages.length ? (
-                    <>
-                      {conversation.messages.map((msg) => (
-                        <MessageBubble key={msg.id} message={msg} />
-                      ))}
-                      {isSending && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="flex gap-3"
-                        >
-                          <div className="mt-5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/20">
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                            >
-                              <Brain className="h-4 w-4 text-primary" />
-                            </motion.div>
-                          </div>
-                          <div className="mt-5 rounded-2xl rounded-tl-sm bg-card px-4 py-3 ring-1 ring-border/40">
-                            <span className="text-muted-foreground"><TypingDots /></span>
-                          </div>
-                        </motion.div>
-                      )}
-                      {/* Bottom spacer */}
-                      <div className="h-4" />
-                    </>
-                  ) : (
-                    /* ── Empty state ── */
-                    <motion.div
-                      initial={{ opacity: 0, y: 24 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
-                      className="flex flex-col items-center py-24 text-center"
-                    >
+          {/* Body */}
+          <div className="flex min-h-0 flex-1">
+            {/* Messages column */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {messages.length === 0 && !streaming ? (
+                  /* Empty state */
+                  <div className="flex h-full flex-col items-center justify-center gap-8 px-6">
+                    <div className="text-center">
                       <motion.div
-                        animate={{ scale: [1, 1.08, 1] }}
-                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                        className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/20 shadow-lg shadow-primary/10"
+                        animate={{ scale: [1, 1.05, 1] }}
+                        transition={{ duration: 3, repeat: Infinity }}
+                        className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10"
                       >
                         <Sparkles className="h-8 w-8 text-primary" />
                       </motion.div>
-                      <h2 className="text-2xl font-black tracking-tight">Чем могу помочь?</h2>
-                      <p className="mt-3 max-w-sm text-sm text-muted-foreground">
-                        Задайте вопрос, прикрепите файл или попросите создать артефакт — таблицу, документ, изображение.
+                      <h1 className="text-2xl font-bold">Чем могу помочь?</h1>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Спросите о чём угодно или выберите быстрый запрос
                       </p>
-                      <div className="mt-8 flex flex-wrap justify-center gap-2">
-                        {[
-                          { label: "Сравни VPN-протоколы", icon: "🔒" },
-                          { label: "Сделай таблицу CSV", icon: "📊" },
-                          { label: "Найди в интернете", icon: "🔍" },
-                          { label: "Разбери мой файл", icon: "📄" },
-                        ].map(({ label, icon }) => (
-                          <motion.button
-                            key={label}
-                            whileHover={{ scale: 1.03 }}
-                            whileTap={{ scale: 0.97 }}
-                            type="button"
-                            onClick={() => setDraft(label)}
-                            className="flex items-center gap-2 rounded-xl border border-border/50 bg-card/60 px-4 py-2.5 text-sm shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/5"
-                          >
-                            <span>{icon}</span>
-                            {label}
-                          </motion.button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </div>
+                    </div>
+                    <div className="grid w-full max-w-md grid-cols-2 gap-2">
+                      {QUICK_PROMPTS.map((p) => (
+                        <motion.button
+                          key={p.text}
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            setInputText(p.text);
+                            textareaRef.current?.focus();
+                          }}
+                          className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-3 text-left text-sm transition-colors hover:bg-muted/60"
+                        >
+                          <span className="text-base">{p.emoji}</span>
+                          <span className="text-xs leading-tight text-muted-foreground">
+                            {p.text}
+                          </span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
+                    <AnimatePresence initial={false}>
+                      {messages.map((msg) => (
+                        <MessageBubble key={msg.id} message={msg} />
+                      ))}
+                      {streaming && (
+                        <MessageBubble key="streaming" streaming={streaming} />
+                      )}
+                    </AnimatePresence>
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
               </div>
 
-              {/* Scroll to bottom button */}
+              {/* Error */}
               <AnimatePresence>
-                {showScrollBtn && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.8, y: 8 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.8, y: 8 }}
-                    transition={{ duration: 0.18 }}
-                    type="button"
-                    onClick={scrollToBottom}
-                    className="absolute bottom-[88px] left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border/50 bg-background/90 shadow-md backdrop-blur-sm hover:bg-muted/80"
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="mx-4 mb-2 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"
                   >
-                    <ArrowDown className="h-4 w-4 text-muted-foreground" />
-                  </motion.button>
+                    <span className="flex-1">{error}</span>
+                    <button type="button" onClick={() => setError(null)}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Input area */}
-              <div className="shrink-0 border-t border-border/40 bg-background/80 px-4 py-4 backdrop-blur-xl lg:px-8">
-                <div className="mx-auto w-full max-w-3xl">
-                  {/* Pending files */}
+              {/* Input */}
+              <div className="shrink-0 px-4 pb-4 pt-2">
+                <div
+                  className={`mx-auto max-w-3xl overflow-hidden rounded-2xl border transition-all duration-200 ${
+                    hasInput
+                      ? "border-primary/40 shadow-lg shadow-primary/5"
+                      : "border-border/50"
+                  } bg-muted/30`}
+                >
+                  {/* Attachments strip */}
                   <AnimatePresence>
-                    {pendingFiles.length > 0 && (
+                    {attachments.length > 0 && (
                       <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mb-2 flex flex-wrap gap-1.5"
+                        initial={{ height: 0 }}
+                        animate={{ height: "auto" }}
+                        exit={{ height: 0 }}
+                        className="overflow-hidden"
                       >
-                        {pendingFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/50 pl-2 pr-1 py-1 text-xs"
-                          >
-                            {file.mimeType.startsWith("image/") ? (
-                              <ImageIcon className="h-3 w-3 text-primary" />
-                            ) : (
-                              <FileUp className="h-3 w-3 text-primary" />
-                            )}
-                            <span className="max-w-[100px] truncate">{file.fileName}</span>
-                            <button
-                              type="button"
-                              onClick={() => setPendingFiles((p) => p.filter((f) => f.id !== file.id))}
-                              className="rounded-full p-0.5 hover:bg-muted"
-                            >
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        ))}
+                        <div className="flex flex-wrap gap-2 p-3 pb-0">
+                          {attachments.map((a) => (
+                            <AttachmentChip
+                              key={a.id}
+                              attachment={a}
+                              onRemove={() => removeAttachment(a.id)}
+                            />
+                          ))}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
-                  {/* Input box */}
-                  <div className={cn(
-                    "flex items-end gap-2 rounded-2xl border bg-card/80 px-3 py-2.5 shadow-sm transition-all duration-200",
-                    draft ? "border-primary/30 shadow-primary/5 shadow-md" : "border-border/40",
-                  )}>
-                    {/* Attach */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="mb-0.5 shrink-0 rounded-lg p-1.5 text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
-                        >
-                          <Paperclip className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>Прикрепить файл</TooltipContent>
-                    </Tooltip>
-
-                    <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUpload} />
-
-                    {/* Textarea */}
+                  <div className="flex items-end gap-2 p-3">
                     <textarea
                       ref={textareaRef}
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
+                      value={inputText}
+                      onChange={(e) => {
+                        setInputText(e.target.value);
+                        adjustTextarea();
+                      }}
                       onKeyDown={handleKeyDown}
-                      placeholder="Напишите сообщение… (Enter — отправить)"
+                      placeholder={
+                        isRecording ? "Говорите..." : "Напишите сообщение..."
+                      }
                       rows={1}
-                      className="flex-1 resize-none bg-transparent py-1 text-sm leading-6 outline-none placeholder:text-muted-foreground/40"
-                      style={{ maxHeight: "200px" }}
+                      className="flex-1 resize-none bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
+                      style={{ maxHeight: 200 }}
                     />
 
-                    {/* Send */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <motion.button
-                          whileTap={{ scale: 0.92 }}
-                          type="button"
-                          onClick={handleSend}
-                          disabled={isSending || !draft.trim()}
-                          className={cn(
-                            "mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
-                            draft.trim() && !isSending
-                              ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
-                              : "bg-muted/50 text-muted-foreground/40 cursor-not-allowed",
-                          )}
-                        >
-                          <AnimatePresence mode="wait">
-                            {isSending ? (
-                              <motion.span
-                                key="spin"
-                                initial={{ opacity: 0, rotate: -90 }}
-                                animate={{ opacity: 1, rotate: 0 }}
-                                exit={{ opacity: 0, rotate: 90 }}
-                                className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin block"
+                    <div className="flex shrink-0 items-center gap-1">
+                      {/* Attach */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isStreaming}
+                          >
+                            <Paperclip className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Прикрепить файл</TooltipContent>
+                      </Tooltip>
+
+                      {/* Audio */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={`h-8 w-8 transition-colors ${
+                              isRecording
+                                ? "text-red-400 hover:text-red-400"
+                                : "text-muted-foreground"
+                            }`}
+                            onClick={
+                              isRecording ? stopRecording : startRecording
+                            }
+                            disabled={isStreaming}
+                          >
+                            <AnimatePresence mode="wait">
+                              {isRecording ? (
+                                <motion.div
+                                  key="rec"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="flex items-center"
+                                >
+                                  {frequencies.some((f) => f > 0.05) ? (
+                                    <AudioEqualizer frequencies={frequencies} />
+                                  ) : (
+                                    <MicOff className="h-4 w-4" />
+                                  )}
+                                </motion.div>
+                              ) : (
+                                <motion.div
+                                  key="idle"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                >
+                                  <Mic className="h-4 w-4" />
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isRecording ? "Остановить запись" : "Голосовой ввод"}
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {/* Send */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={!hasInput || isStreaming}
+                            onClick={handleSend}
+                          >
+                            {isStreaming ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                                className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
                               />
                             ) : (
-                              <motion.span
-                                key="arrow"
-                                initial={{ opacity: 0, y: 4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                              >
-                                <ArrowUp className="h-4 w-4" />
-                              </motion.span>
+                              <Send className="h-4 w-4" />
                             )}
-                          </AnimatePresence>
-                        </motion.button>
-                      </TooltipTrigger>
-                      <TooltipContent>Отправить (Enter)</TooltipContent>
-                    </Tooltip>
-                  </div>
-
-                  {/* Hint row */}
-                  <div className="mt-1.5 flex items-center justify-between px-1">
-                    <span className="text-[10px] text-muted-foreground/40">
-                      Shift+Enter — перенос строки
-                    </span>
-                    {quotaLabel && (
-                      <span className="text-[10px] text-muted-foreground/40">
-                        {quotaLabel}
-                      </span>
-                    )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Отправить (Enter)</TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
                 </div>
+
+                <p className="mt-1.5 text-center text-[10px] text-muted-foreground/40">
+                  lowkey AI · {aiState?.settings.defaultModel ?? ""}
+                </p>
               </div>
             </div>
 
-            {/* Canvas panel */}
+            {/* Canvas */}
             <AnimatePresence>
-              {showCanvas && selectedArtifact && (
-                <motion.aside
+              {canvasOpen && (
+                <motion.div
                   initial={{ width: 0, opacity: 0 }}
                   animate={{ width: 440, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                  className="flex shrink-0 flex-col overflow-hidden border-l border-border/40 bg-background/80 backdrop-blur-xl"
+                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  className="shrink-0 overflow-hidden border-l border-border/40 bg-background"
                 >
-                  {/* Canvas header */}
-                  <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold">Холст</div>
-                      <div className="truncate text-xs text-muted-foreground/70">
-                        {selectedArtifact.fileName}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 rounded-lg"
-                      onClick={() => setShowCanvas(false)}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-
-                  {/* Artifact tabs */}
-                  {artifacts.length > 1 && (
-                    <div className="flex gap-1 overflow-x-auto border-b border-border/40 px-3 py-2">
-                      {artifacts.map((art) => (
-                        <button
-                          key={art.id}
-                          type="button"
-                          onClick={() => setSelectedArtifact(art)}
-                          className={cn(
-                            "shrink-0 rounded-lg px-3 py-1 text-xs font-medium transition-colors",
-                            selectedArtifact.id === art.id
-                              ? "bg-primary/10 text-primary ring-1 ring-primary/20"
-                              : "text-muted-foreground hover:bg-muted/50",
-                          )}
-                        >
-                          {art.fileName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Preview */}
-                  <div className="flex-1 overflow-auto p-4">
-                    <div className="overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm">
-                      {selectedArtifact.mimeType.startsWith("image/") ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={selectedArtifact.blobUrl}
-                          alt={selectedArtifact.fileName}
-                          className="h-auto w-full object-cover"
-                        />
-                      ) : (
-                        <iframe
-                          title={selectedArtifact.fileName}
-                          src={selectedArtifact.blobUrl}
-                          className="h-[60vh] w-full"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Canvas footer */}
-                  <div className="border-t border-border/40 p-4">
-                    <div className="flex gap-2">
-                      <Button asChild variant="outline" className="flex-1 h-8 gap-1.5 rounded-xl text-xs">
-                        <a href={selectedArtifact.blobUrl} target="_blank" rel="noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Открыть
-                        </a>
-                      </Button>
-                      <Button asChild variant="outline" className="flex-1 h-8 gap-1.5 rounded-xl text-xs">
-                        <a href={selectedArtifact.blobUrl} download={selectedArtifact.fileName}>
-                          <Download className="h-3.5 w-3.5" />
-                          Скачать
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                </motion.aside>
+                  <CanvasPanel
+                    content={canvasContent}
+                    onClose={() => setCanvasOpen(false)}
+                  />
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
         </div>
 
-        {/* Paywall */}
-        <AnimatePresence>
-          {showPaywall && state && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[120] flex items-end justify-center bg-background/60 p-4 backdrop-blur-xl sm:items-center"
-            >
-              <motion.div
-                initial={{ opacity: 0, y: 40, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 20, scale: 0.97 }}
-                transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                className="w-full max-w-3xl rounded-[2rem] border border-border/50 bg-background p-6 shadow-2xl"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 text-xl font-black tracking-tight">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      Лимит AI токенов исчерпан
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Выберите AI-подписку или докупите токены. Оплата спишется с баланса.
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="icon" className="rounded-xl" onClick={() => setShowPaywall(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-4">
-                  {[
-                    { slug: "ai", title: "AI", price: state.settings.aiPlanPrice, caption: "10M токенов / мес" },
-                    { slug: "max", title: "MAX", price: state.settings.maxPlanPrice, caption: "25M токенов / мес" },
-                    { slug: "combo", title: "Combo", price: state.settings.comboPlanPrice, caption: "VPN + AI" },
-                    { slug: "tokens", title: "Токены", price: state.settings.tokenPackPrice, caption: `${formatTokens(state.settings.tokenPackSize)} токенов` },
-                  ].map((item, i) => (
-                    <motion.div
-                      key={item.slug}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.06 }}
-                      className="rounded-2xl border border-border/50 bg-card/70 p-4 hover:border-primary/30 transition-colors"
-                    >
-                      <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{item.title}</div>
-                      <div className="mt-1.5 text-2xl font-black">{item.price} ₽</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{item.caption}</div>
-                      <Button className="mt-4 h-8 w-full rounded-xl text-xs" onClick={() => handlePurchase(item.slug)}>
-                        Купить
-                      </Button>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
     </TooltipProvider>
   );

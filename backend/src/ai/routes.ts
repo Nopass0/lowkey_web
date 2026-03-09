@@ -403,6 +403,216 @@ async function callOpenRouter(
   throw new Error("The model exceeded the tool execution limit");
 }
 
+// ─── Streaming version of callOpenRouter ─────────────────────────────────────
+async function callOpenRouterStream(
+  apiKey: string,
+  model: string,
+  messages: unknown[],
+  maxTokens: number,
+  userId: string,
+  conversationId: string,
+  emit: (event: string, data: JsonObject) => void,
+) {
+  const toolDefinitions = [
+    {
+      type: "function",
+      function: {
+        name: "duckduckgo_search",
+        description: "Search public web results through DuckDuckGo.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "smart_fetch_url",
+        description: "Fetch and extract the readable text content from a public URL.",
+        parameters: {
+          type: "object",
+          properties: { url: { type: "string" } },
+          required: ["url"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "create_artifact",
+        description: "Create a downloadable artifact such as markdown, html, csv or json.",
+        parameters: {
+          type: "object",
+          properties: {
+            kind: { type: "string" },
+            title: { type: "string" },
+            content: { type: "string" },
+            mimeType: { type: "string" },
+          },
+          required: ["kind", "title", "content"],
+        },
+      },
+    },
+  ];
+
+  const workingMessages = [...messages];
+  const toolEvents: JsonObject[] = [];
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://lowkey.su",
+        "X-Title": "lowkey AI",
+      },
+      body: JSON.stringify({
+        model,
+        messages: workingMessages,
+        tools: toolDefinitions,
+        tool_choice: "auto",
+        max_tokens: Math.max(256, Math.min(16000, maxTokens)),
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OpenRouter error: ${text}`);
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    let reasoning = "";
+    const pendingToolCalls: Record<
+      number,
+      { id: string; name: string; args: string }
+    > = {};
+    let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break outer;
+
+        let chunk: JsonObject;
+        try {
+          chunk = JSON.parse(raw) as JsonObject;
+        } catch {
+          continue;
+        }
+
+        const choices = chunk.choices as Array<JsonObject> | undefined;
+        const delta = choices?.[0]?.delta as JsonObject | undefined;
+        if (!delta) {
+          if (chunk.usage) {
+            const u = chunk.usage as JsonObject;
+            usage = {
+              inputTokens: Number(u.prompt_tokens ?? 0),
+              outputTokens: Number(u.completion_tokens ?? 0),
+              totalTokens: Number(u.total_tokens ?? 0),
+            };
+          }
+          continue;
+        }
+
+        if (delta.content) {
+          content += String(delta.content);
+          emit("delta", { text: String(delta.content) });
+        }
+
+        const reasoningText =
+          (delta.reasoning as string) ||
+          (delta.reasoning_content as string) ||
+          "";
+        if (reasoningText) {
+          reasoning += reasoningText;
+          emit("reasoning_delta", { text: reasoningText });
+        }
+
+        if (delta.tool_calls) {
+          const tcs = delta.tool_calls as Array<JsonObject>;
+          for (const tc of tcs) {
+            const idx = Number(tc.index ?? 0);
+            if (!pendingToolCalls[idx]) {
+              pendingToolCalls[idx] = { id: "", name: "", args: "" };
+            }
+            const fn = tc.function as JsonObject | undefined;
+            if (tc.id) pendingToolCalls[idx].id = String(tc.id);
+            if (fn?.name) pendingToolCalls[idx].name += String(fn.name);
+            if (fn?.arguments) pendingToolCalls[idx].args += String(fn.arguments);
+          }
+        }
+
+        if (chunk.usage) {
+          const u = chunk.usage as JsonObject;
+          usage = {
+            inputTokens: Number(u.prompt_tokens ?? 0),
+            outputTokens: Number(u.completion_tokens ?? 0),
+            totalTokens: Number(u.total_tokens ?? 0),
+          };
+        }
+      }
+    }
+
+    const toolCallList = Object.values(pendingToolCalls);
+
+    if (!toolCallList.length) {
+      return {
+        provider: "openrouter",
+        model,
+        content: content || "Ответ не получен.",
+        reasoning: reasoning || null,
+        usage,
+        toolEvents,
+      };
+    }
+
+    workingMessages.push({
+      role: "assistant",
+      content: content || "",
+      tool_calls: toolCallList.map((tc) => ({
+        id: tc.id,
+        type: "function",
+        function: { name: tc.name, arguments: tc.args },
+      })),
+    });
+
+    for (const tc of toolCallList) {
+      emit("tool_call", { name: tc.name, args: tc.args });
+      const result = await executeTool(userId, conversationId, tc.name, tc.args);
+      toolEvents.push({ id: tc.id, name: tc.name, result });
+      emit("tool_result", { name: tc.name, result: result as JsonObject });
+      workingMessages.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: JSON.stringify(result),
+      });
+    }
+
+    // reset for next iteration
+    content = "";
+    reasoning = "";
+    Object.keys(pendingToolCalls).forEach(
+      (k) => delete pendingToolCalls[Number(k)],
+    );
+  }
+
+  throw new Error("The model exceeded the tool execution limit");
+}
+
 async function callLocalModel(
   baseUrl: string,
   model: string,
@@ -980,6 +1190,214 @@ export const aiRoutes = new Elysia()
               kind: artifact.kind,
             })),
           };
+        },
+        {
+          body: t.Object({
+            conversationId: t.Optional(t.String()),
+            model: t.Optional(t.String()),
+            message: t.String(),
+            attachmentIds: t.Optional(t.Array(t.String())),
+          }),
+        },
+      )
+      .post(
+        "/chat/stream",
+        async ({ user, body, set }) => {
+          const quota = await getUserAiQuota(user.userId);
+          if (quota.totalAvailable <= 0) {
+            set.status = 402;
+            return { message: "AI token limit reached" };
+          }
+
+          let conversationId = body.conversationId || null;
+          const isNew = !conversationId;
+
+          if (isNew) {
+            const created = await db.aiConversation.create({
+              data: {
+                userId: user.userId,
+                title: buildConversationTitle(body.message),
+              },
+            });
+            conversationId = created.id;
+          }
+
+          const conversation = await db.aiConversation.findFirst({
+            where: { id: conversationId!, userId: user.userId },
+            include: {
+              messages: { orderBy: { createdAt: "asc" } },
+            },
+          });
+
+          if (!conversation) {
+            set.status = 404;
+            return { message: "Conversation not found" };
+          }
+
+          const attachmentIds = body.attachmentIds ?? [];
+          const files = attachmentIds.length
+            ? await db.aiFile.findMany({
+                where: { id: { in: attachmentIds }, userId: user.userId },
+                select: {
+                  id: true,
+                  fileName: true,
+                  mimeType: true,
+                  blobUrl: true,
+                  kind: true,
+                },
+              })
+            : [];
+
+          const userMessageRecord = await db.aiMessage.create({
+            data: {
+              conversationId: conversation.id,
+              role: "user",
+              content: body.message,
+              attachments: files as unknown as object,
+            },
+          });
+
+          if (files.length) {
+            await db.aiFile.updateMany({
+              where: { id: { in: files.map((f) => f.id) } },
+              data: { messageId: userMessageRecord.id, conversationId: conversation.id },
+            });
+          }
+
+          const messagePayload = buildMessagePayload(
+            quota.settings,
+            [...conversation.messages, userMessageRecord].map((m) => ({
+              role: m.role,
+              content: m.content,
+              attachments: m.attachments,
+            })),
+            files,
+            body.message,
+          );
+
+          const preferredModel = body.model || quota.settings.defaultModel;
+          const useOpenRouter =
+            Boolean(quota.settings.openRouterApiKey) ||
+            Boolean(config.OPENROUTER_API_KEY);
+
+          const encoder = new TextEncoder();
+
+          const stream = new ReadableStream({
+            async start(controller) {
+              function emit(event: string, data: JsonObject) {
+                const chunk = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+                controller.enqueue(encoder.encode(chunk));
+              }
+
+              try {
+                emit("connected", {
+                  conversationId: conversation!.id,
+                  isNew,
+                  title: conversation!.title,
+                });
+
+                let result: Awaited<ReturnType<typeof callOpenRouterStream>>;
+
+                if (useOpenRouter) {
+                  result = await callOpenRouterStream(
+                    quota.settings.openRouterApiKey || config.OPENROUTER_API_KEY,
+                    preferredModel,
+                    messagePayload,
+                    quota.totalAvailable,
+                    user.userId,
+                    conversation!.id,
+                    emit,
+                  );
+                } else {
+                  // Local model — no streaming, fake it
+                  const localResult = await callLocalModel(
+                    quota.settings.localBaseUrl || config.AI_LOCAL_BASE_URL,
+                    quota.settings.localModel || config.AI_LOCAL_MODEL,
+                    messagePayload.map((m) => ({
+                      role: String((m as JsonObject).role),
+                      content: String((m as JsonObject).content),
+                    })),
+                  );
+                  // Emit word-by-word for UX consistency
+                  const words = localResult.content.split(" ");
+                  for (const word of words) {
+                    emit("delta", { text: word + " " });
+                  }
+                  result = localResult;
+                }
+
+                const assistantMessage = await db.aiMessage.create({
+                  data: {
+                    conversationId: conversation!.id,
+                    role: "assistant",
+                    content: result.content,
+                    reasoning: result.reasoning,
+                    model: result.model,
+                    inputTokens: result.usage.inputTokens,
+                    outputTokens: result.usage.outputTokens,
+                    totalTokens: result.usage.totalTokens,
+                    toolEvents: result.toolEvents as unknown as object,
+                  },
+                });
+
+                await db.aiUsageEntry.create({
+                  data: {
+                    userId: user.userId,
+                    conversationId: conversation!.id,
+                    messageId: assistantMessage.id,
+                    provider: result.provider,
+                    model: result.model,
+                    inputTokens: result.usage.inputTokens,
+                    outputTokens: result.usage.outputTokens,
+                    totalTokens: result.usage.totalTokens,
+                  },
+                });
+
+                await consumeQuota(user.userId, result.usage.totalTokens);
+
+                const artifacts = await db.aiFile.findMany({
+                  where: {
+                    userId: user.userId,
+                    conversationId: conversation!.id,
+                    kind: "artifact",
+                  },
+                  orderBy: { createdAt: "desc" },
+                  take: 12,
+                });
+
+                emit("done", {
+                  messageId: assistantMessage.id,
+                  content: result.content,
+                  reasoning: result.reasoning as string | null ?? null,
+                  model: result.model,
+                  inputTokens: result.usage.inputTokens,
+                  outputTokens: result.usage.outputTokens,
+                  totalTokens: result.usage.totalTokens,
+                  toolEvents: result.toolEvents,
+                  artifacts: artifacts.map((a) => ({
+                    id: a.id,
+                    fileName: a.fileName,
+                    mimeType: a.mimeType,
+                    blobUrl: a.blobUrl,
+                    kind: a.kind,
+                  })),
+                });
+              } catch (err) {
+                emit("error", { message: (err as Error).message ?? "Unknown error" });
+              } finally {
+                controller.close();
+              }
+            },
+          });
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
         },
         {
           body: t.Object({
