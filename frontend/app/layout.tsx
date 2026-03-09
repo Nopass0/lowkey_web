@@ -3,7 +3,10 @@ import { Geist, Geist_Mono, Noto_Sans } from "next/font/google";
 import { ThemeListener } from "@/components/theme-listener";
 import "./globals.css";
 
-const notoSans = Noto_Sans({ variable: "--font-sans" });
+const notoSans = Noto_Sans({
+  variable: "--font-sans",
+  subsets: ["latin", "cyrillic"],
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
