@@ -19,6 +19,7 @@ import type {
   Transaction,
   PaginatedResponse,
   Subscription,
+  UserVpnAccess,
 } from "@/api/types";
 
 // ── Mock data ──────────────────────────────────────────────────
@@ -39,6 +40,13 @@ const MOCK_PROFILE: UserProfile = {
   telegramId: null,
   telegramLinkCode: null,
   referralRate: 10,
+  vpnAccess: {
+    serverIp: "46.226.166.226",
+    location: "RU",
+    protocols: ["VLESS"],
+    vlessLink:
+      "vless://demo-user@46.226.166.226:443?type=tcp&security=tls#lowkey-demo",
+  } satisfies UserVpnAccess,
 };
 
 const MOCK_TRANSACTIONS: Transaction[] = [

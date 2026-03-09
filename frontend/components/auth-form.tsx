@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
@@ -51,8 +51,30 @@ export function AuthForm({ isOpen, onClose }: AuthFormProps) {
   const { login, register, requestAdminCode, verifyAdminCode, verifyOtp } =
     useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const referralParam = searchParams.get("ref");
+  const authMode = searchParams.get("auth");
 
   const isAdminLogin = loginVal.trim().toLowerCase() === ADMIN_LOGIN;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    if (referralParam) {
+      setRefCode(referralParam.toUpperCase());
+      setTab("register");
+      setLoginStep(1);
+      setCodeSent(false);
+      setError(null);
+    } else if (authMode === "register") {
+      setTab("register");
+      setLoginStep(1);
+      setCodeSent(false);
+      setError(null);
+    }
+  }, [authMode, isOpen, referralParam]);
 
   const isFormValid = isAdminLogin
     ? loginVal.trim() !== "" && (codeSent ? adminCode.trim().length >= 4 : true)

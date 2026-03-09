@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useUser, useUserTransactions } from "@/hooks/useUser";
 import { useAuth } from "@/hooks/useAuth";
 import { useDevices } from "@/hooks/useDevices";
@@ -14,6 +14,9 @@ import {
   Wallet,
   Users,
   Laptop,
+  Smartphone,
+  Copy,
+  Check,
   ArrowRight,
   CreditCard,
   Download,
@@ -22,6 +25,45 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
+
+const platformInstructions = [
+  {
+    key: "android",
+    title: "Android",
+    appName: "V2RayTun",
+    href: "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+    icon: Smartphone,
+    steps: [
+      "Установите V2RayTun из Google Play.",
+      "Скопируйте VLESS-ссылку ниже и импортируйте конфигурацию из буфера обмена.",
+      "Если подключение нестабильно, вручную установите MTU = 1280.",
+    ],
+  },
+  {
+    key: "ios",
+    title: "iPhone / iPad",
+    appName: "V2RayTun",
+    href: "https://apps.apple.com/us/app/v2raytun/id6476628951",
+    icon: Smartphone,
+    steps: [
+      "Установите V2RayTun из App Store.",
+      "Скопируйте VLESS-ссылку и выполните импорт конфигурации из буфера обмена.",
+      "Если возникают проблемы с установлением туннеля, укажите MTU = 1280.",
+    ],
+  },
+  {
+    key: "windows",
+    title: "Windows",
+    appName: "Throne",
+    href: "https://github.com/throneproj/Throne/releases/download/1.0.13/Throne-1.0.13-windows64-installer.exe",
+    icon: Laptop,
+    steps: [
+      "Установите клиент Throne для Windows.",
+      "Скопируйте VLESS-ссылку и импортируйте конфигурацию из буфера обмена.",
+      "После импорта выберите профиль и подключитесь.",
+    ],
+  },
+];
 
 const mockHistory = [
   {
@@ -46,6 +88,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { devices } = useDevices();
   const { info: refInfo } = useReferralInfo();
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchPage(1, 5);
@@ -71,6 +114,12 @@ export default function DashboardPage() {
           (1000 * 60 * 60 * 24),
       )
     : 0;
+  const hasVpnAccess = Boolean(profile?.vpnAccess?.vlessLink);
+  const copyToClipboard = async (value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -302,6 +351,109 @@ export default function DashboardPage() {
           </div>
         </motion.div>
       </div>
+
+      {hasVpnAccess && profile?.vpnAccess && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.46 }}
+        >
+          <div className="bg-card border border-border/60 rounded-2xl p-6 space-y-6">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-primary" />
+                  VPN-доступ
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Конфигурация VLESS для вашего аккаунта и быстрые инструкции по
+                  подключению.
+                </p>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Сервер:{" "}
+                <span className="font-semibold text-foreground">
+                  {profile.vpnAccess.location} · {profile.vpnAccess.serverIp}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-muted/40 border border-border/50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                    VLESS URL
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Скопируйте ссылку и импортируйте её в клиент.
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="cursor-pointer shadow-none"
+                  onClick={() => copyToClipboard(profile.vpnAccess!.vlessLink!)}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Скопировано
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Копировать
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background px-4 py-3 font-mono text-xs leading-6 break-all">
+                {profile.vpnAccess.vlessLink}
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {platformInstructions.map((platform) => (
+                <div
+                  key={platform.key}
+                  className="rounded-2xl border border-border/60 bg-muted/20 p-5"
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="rounded-xl bg-primary/10 p-2">
+                      <platform.icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-bold">{platform.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {platform.appName}
+                      </div>
+                    </div>
+                  </div>
+                  <ol className="space-y-2 text-sm text-muted-foreground">
+                    {platform.steps.map((step, index) => (
+                      <li key={step} className="flex gap-2">
+                        <span className="text-primary font-semibold">
+                          {index + 1}.
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full mt-4 cursor-pointer shadow-none"
+                  >
+                    <Link href={platform.href} target="_blank">
+                      Скачать {platform.appName}
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Recent history */}
       <motion.div

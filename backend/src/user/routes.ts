@@ -18,6 +18,18 @@ function avatarHash(login: string): string {
   return crypto.createHash("md5").update(login.toLowerCase()).digest("hex");
 }
 
+function buildVlessLink(
+  template: string | null,
+  userId: string,
+  serverIp: string,
+): string | null {
+  if (!template) {
+    return null;
+  }
+
+  return template.replaceAll("{uuid}", userId).replaceAll("{ip}", serverIp);
+}
+
 /**
  * User routes group.
  * Provides profile and transaction history endpoints.
@@ -37,6 +49,18 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         set.status = 404;
         return { message: "User not found" };
       }
+
+      const isSubscriptionActive =
+        !!dbUser.subscription &&
+        (dbUser.subscription.isLifetime ||
+          dbUser.subscription.activeUntil > new Date());
+
+      const vpnServer = isSubscriptionActive
+        ? await db.vpnServer.findFirst({
+            where: { status: "online" },
+            orderBy: [{ lastSeenAt: "desc" }, { currentLoad: "asc" }],
+          })
+        : null;
 
       let linkCode = dbUser.telegramLinkCode;
       if (!dbUser.telegramId) {
@@ -76,6 +100,18 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         telegramId: dbUser.telegramId ? dbUser.telegramId.toString() : null,
         telegramLinkCode: !dbUser.telegramId ? linkCode : null,
         referralRate: dbUser.referralRate,
+        vpnAccess: vpnServer
+          ? {
+              serverIp: vpnServer.ip,
+              location: vpnServer.location,
+              protocols: vpnServer.supportedProtocols,
+              vlessLink: buildVlessLink(
+                vpnServer.connectLinkTemplate,
+                dbUser.id,
+                vpnServer.ip,
+              ),
+            }
+          : null,
       };
     } catch (err) {
       set.status = 500;

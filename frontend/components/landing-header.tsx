@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Moon, Sun, VenetianMask } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanding } from "@/hooks/useLanding";
 import { useTheme } from "@/hooks/useTheme";
-import { AuthForm } from "./auth-form";
 import { Button } from "./ui/button";
+import { AuthForm } from "./auth-form";
 
-export function LandingHeader() {
+function LandingHeaderContent() {
   const { isAuthModalOpen, setAuthModalOpen } = useLanding();
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setMounted(true);
@@ -26,6 +28,16 @@ export function LandingHeader() {
       document.documentElement.classList.remove("dark");
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (!mounted || isAuthenticated) {
+      return;
+    }
+
+    if (searchParams.get("ref") || searchParams.get("auth") === "register") {
+      setAuthModalOpen(true);
+    }
+  }, [isAuthenticated, mounted, searchParams, setAuthModalOpen]);
 
   return (
     <>
@@ -78,5 +90,13 @@ export function LandingHeader() {
         onClose={() => setAuthModalOpen(false)}
       />
     </>
+  );
+}
+
+export function LandingHeader() {
+  return (
+    <Suspense fallback={null}>
+      <LandingHeaderContent />
+    </Suspense>
   );
 }

@@ -30,7 +30,7 @@ import type {
 
 const MOCK_INFO: ReferralInfo = {
   code: "NOPASS7X",
-  link: "https://lowkey.vpn/r/NOPASS7X",
+  link: "https://lowkey.su/r/NOPASS7X",
   balance: 120,
   rate: 0.2,
   totalEarned: 220,

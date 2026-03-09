@@ -36,13 +36,26 @@ function generateReferralCode(login: string): string {
   return `${prefix}${suffix}`;
 }
 
+function getReferralCodeVariants(referralCode: string): string[] {
+  const trimmed = referralCode.trim();
+  const upper = trimmed.toUpperCase();
+  const normalized = upper.replace(/^REF_/, "");
+
+  return [...new Set([trimmed, upper, normalized, `REF_${normalized}`])].filter(
+    Boolean,
+  );
+}
+
 /**
  * Sends a message to the configured Telegram admin chat via Bot API.
  *
  * @param message - Text message to send
  */
-async function sendTelegramMessage(message: string): Promise<void> {
-  if (!config.TELEGRAM_BOT_TOKEN || !config.TELEGRAM_ADMIN_CHAT_ID) {
+async function sendTelegramMessage(
+  chatId: string | number,
+  message: string,
+): Promise<void> {
+  if (!config.TELEGRAM_BOT_TOKEN || !chatId) {
     console.warn(
       "[Telegram] Bot token or chat ID not configured, skipping message:",
       message,
@@ -56,8 +69,9 @@ async function sendTelegramMessage(message: string): Promise<void> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chat_id: config.TELEGRAM_ADMIN_CHAT_ID,
+          chat_id: chatId,
           text: message,
+          parse_mode: "Markdown",
         }),
       },
     );
@@ -104,6 +118,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
           // Send to Bot
           await sendTelegramMessage(
+            user.telegramId.toString(),
             `🔐 Код для пользователя ${user.login} входа на сайт: **${code}**`,
           );
 
@@ -231,8 +246,8 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         // Find referrer if referral code provided
         let referredById: string | undefined;
         if (referralCode) {
-          const referrer = await db.user.findUnique({
-            where: { referralCode },
+          const referrer = await db.user.findFirst({
+            where: { referralCode: { in: getReferralCodeVariants(referralCode) } },
             select: { id: true },
           });
           if (referrer) {
@@ -303,7 +318,10 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
             "EX",
             300,
           );
-          await sendTelegramMessage(`🔐 Код входа: ${code}`);
+          await sendTelegramMessage(
+            config.TELEGRAM_ADMIN_CHAT_ID,
+            `🔐 Код входа: ${code}`,
+          );
         }
 
         return { sent: true };

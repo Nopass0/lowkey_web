@@ -88,6 +88,13 @@ export interface Subscription {
   isLifetime: boolean;
 }
 
+export interface UserVpnAccess {
+  serverIp: string;
+  location: string;
+  protocols: string[];
+  vlessLink: string | null;
+}
+
 export interface UserProfile {
   id: string;
   login: string;
@@ -99,6 +106,7 @@ export interface UserProfile {
   telegramId: string | null;
   telegramLinkCode: string | null;
   referralRate: number;
+  vpnAccess: UserVpnAccess | null;
 }
 
 /** Single transaction in history */

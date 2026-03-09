@@ -7,6 +7,11 @@ import Elysia, { t } from "elysia";
 import { db } from "../db";
 import { authMiddleware } from "../auth/middleware";
 
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lowkey.su").replace(
+  /\/$/,
+  "",
+);
+
 /**
  * Masks a login string for privacy: shows first 4 chars + "***".
  *
@@ -53,7 +58,7 @@ export const referralRoutes = new Elysia({ prefix: "/user/referral" })
 
       return {
         code: dbUser.referralCode,
-        link: `https://lowkey.vpn/r/${dbUser.referralCode}`,
+        link: `${siteUrl}/r/${dbUser.referralCode}`,
         balance: dbUser.referralBalance,
         rate: dbUser.referralRate,
         totalEarned: totalEarned._sum.amount ?? 0,
