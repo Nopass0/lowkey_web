@@ -122,8 +122,19 @@ install_nginx_config() {
 
 ensure_certificate() {
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
+  local needs_expand="false"
 
   if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
+    if [[ -n "${AI_DOMAIN}" ]]; then
+      if ! openssl x509 -in "${cert_dir}/fullchain.pem" -noout -text | grep -q "DNS:${AI_DOMAIN}"; then
+        needs_expand="true"
+      fi
+    else
+      return
+    fi
+  fi
+
+  if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" && "${needs_expand}" != "true" ]]; then
     return
   fi
 
@@ -139,6 +150,10 @@ ensure_certificate() {
 
   if [[ -n "${AI_DOMAIN}" ]]; then
     certbot_args+=(-d "${AI_DOMAIN}")
+  fi
+
+  if [[ "${needs_expand}" == "true" ]]; then
+    certbot_args+=(--expand)
   fi
 
   "${certbot_args[@]}"
