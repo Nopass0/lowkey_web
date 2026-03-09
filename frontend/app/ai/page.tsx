@@ -733,6 +733,7 @@ export default function AiPage() {
   const [selectedArtifact, setSelectedArtifact] = useState<AiFileItem | null>(null);
   const [pendingFiles, setPendingFiles] = useState<AiFileItem[]>([]);
   const [showCanvas, setShowCanvas] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -753,16 +754,20 @@ export default function AiPage() {
           const userState = await apiClient.get<AiUserState>("/user/ai/state");
           if (!mounted) return;
           setState(userState);
+          setSelectedModel(userState.settings.defaultModel || publicConfig.defaultModel);
           if (userState.conversations[0]) {
             const detail = await apiClient.get<AiConversationDetail>(
               `/user/ai/conversations/${userState.conversations[0].id}`,
             );
             if (!mounted) return;
             setConversation(detail);
+            if (detail.model) setSelectedModel(detail.model);
             const arts = detail.files.filter((f) => f.kind === "artifact");
             setArtifacts(arts);
             setSelectedArtifact(arts[0] ?? null);
           }
+        } else if (mounted) {
+          setSelectedModel(publicConfig.defaultModel);
         }
       } finally {
         if (mounted) setIsBootLoading(false);
@@ -815,11 +820,12 @@ export default function AiPage() {
     setMobileSidebarOpen(false);
     const detail = await apiClient.get<AiConversationDetail>(`/user/ai/conversations/${id}`);
     setConversation(detail);
+    setSelectedModel(detail.model || state?.settings.defaultModel || config?.defaultModel || "");
     const arts = detail.files.filter((f) => f.kind === "artifact");
     setArtifacts(arts);
     setSelectedArtifact(arts[0] ?? null);
     setShowCanvas(arts.length > 0);
-  }, []);
+  }, [config?.defaultModel, state?.settings.defaultModel]);
 
   const handleCreateConversation = useCallback(async () => {
     setMobileSidebarOpen(false);
@@ -837,10 +843,11 @@ export default function AiPage() {
       messages: [],
       files: [],
     });
+    setSelectedModel(nextState.settings.defaultModel || config?.defaultModel || "");
     setArtifacts([]);
     setSelectedArtifact(null);
     setShowCanvas(false);
-  }, []);
+  }, [config?.defaultModel]);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -883,6 +890,7 @@ export default function AiPage() {
         conversationId: conversation?.id,
         message: msg,
         attachmentIds: pendingFiles.map((f) => f.id),
+        model: selectedModel || conversation?.model || state?.settings.defaultModel || config?.defaultModel,
       });
       const [detail, nextState] = await Promise.all([
         apiClient.get<AiConversationDetail>(`/user/ai/conversations/${response.conversationId}`),
@@ -890,6 +898,7 @@ export default function AiPage() {
       ]);
       setState(nextState);
       setConversation(detail);
+      setSelectedModel(detail.model || nextState.settings.defaultModel || config?.defaultModel || "");
       const nextArts = response.artifacts;
       setArtifacts(nextArts);
       if (nextArts[0]) { setSelectedArtifact(nextArts[0]); setShowCanvas(true); }
@@ -900,6 +909,28 @@ export default function AiPage() {
       setIsSending(false);
     }
   };
+
+  const modelOptions = useMemo(() => {
+    const values = [
+      selectedModel,
+      conversation?.model,
+      state?.settings.defaultModel,
+      state?.settings.localModel,
+      config?.defaultModel,
+      "openai/gpt-4o-mini",
+      "anthropic/claude-3.7-sonnet",
+      "google/gemini-2.0-flash-001",
+      "qwen3.5:0.8b",
+    ].filter(Boolean) as string[];
+
+    return Array.from(new Set(values));
+  }, [
+    config?.defaultModel,
+    conversation?.model,
+    selectedModel,
+    state?.settings.defaultModel,
+    state?.settings.localModel,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -977,11 +1008,32 @@ export default function AiPage() {
                 {conversation?.title || "Новый чат"}
               </h1>
               <p className="truncate text-xs text-muted-foreground/70">
-                {state?.settings.defaultModel || config?.defaultModel}
+                {selectedModel || conversation?.model || state?.settings.defaultModel || config?.defaultModel}
               </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 rounded-xl px-3 text-xs">
+                    {selectedModel ? selectedModel.split("/").pop() : "Модель"}
+                    <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-80 w-72 overflow-y-auto rounded-xl">
+                  <DropdownMenuLabel>Модель чата</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {modelOptions.map((model) => (
+                    <DropdownMenuItem
+                      key={model}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedModel(model)}
+                    >
+                      {model}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {hasCanvas && (
                 <Tooltip>
                   <TooltipTrigger asChild>

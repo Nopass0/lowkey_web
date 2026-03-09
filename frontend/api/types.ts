@@ -317,6 +317,7 @@ export interface AiUserState {
   subscription: AiSubscriptionState | null;
   settings: {
     defaultModel: string;
+    localModel?: string;
     freeMonthlyTokens: number;
     aiPlanPrice: number;
     maxPlanPrice: number;
