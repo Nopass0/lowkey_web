@@ -32,7 +32,7 @@ jobs:
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       AI_LOCAL_BASE_URL: http://ollama:11434
-      AI_LOCAL_MODEL: qwen3:0.6b
+      AI_LOCAL_MODEL: qwen3.5:0.8b
       REMOTE_BASE: /opt/lowkey_site/${{ github.ref_name == 'main' && 'main' || 'dev' }}
     steps:
       - name: Checkout

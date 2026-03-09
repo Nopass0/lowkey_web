@@ -89,7 +89,7 @@ TOCHKA_MERCHANT_ID=${TOCHKA_MERCHANT_ID}
 BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN:-}
 OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
 AI_LOCAL_BASE_URL=${AI_LOCAL_BASE_URL:-http://ollama:11434}
-AI_LOCAL_MODEL=${AI_LOCAL_MODEL:-qwen3:0.6b}
+AI_LOCAL_MODEL=${AI_LOCAL_MODEL:-qwen3.5:0.8b}
 APP_FILES_DIR=./uploads
 PORT=3001
 NODE_ENV=production
@@ -163,13 +163,13 @@ deploy_stack() {
   cd "${ROOT_DIR}"
   local compose_cmd=(docker compose --env-file .env.compose -p "lowkey-${APP_ENV}")
 
-  export DOCKER_BUILDKIT=0
-  export COMPOSE_DOCKER_CLI_BUILD=0
+  export DOCKER_BUILDKIT=1
+  export COMPOSE_DOCKER_CLI_BUILD=1
 
   "${compose_cmd[@]}" build backend
   "${compose_cmd[@]}" build frontend
   "${compose_cmd[@]}" up -d --remove-orphans ollama backend frontend
-  "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3:0.6b}" || true
+  "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3.5:0.8b}" || true
 }
 
 ensure_server_packages
