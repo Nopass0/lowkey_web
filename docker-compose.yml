@@ -67,6 +67,7 @@ services:
       N8N_LISTEN_ADDRESS: 0.0.0.0
       N8N_PORT: 5678
       N8N_PROTOCOL: https
+      NODE_PATH: /opt/n8n-external/node_modules
       NODE_FUNCTION_ALLOW_BUILTIN: "*"
       NODE_FUNCTION_ALLOW_EXTERNAL: axios,lodash,dayjs,moment,uuid,zod,cheerio
       TZ: ${GENERIC_TIMEZONE}
