@@ -222,6 +222,7 @@ install_nginx_config() {
 
   if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
     render_template "${ROOT_DIR}/deploy/nginx-https.conf.template" "${target}"
+    append_n8n_http_config "${target}"
     append_n8n_https_config "${target}"
   else
     render_template "${ROOT_DIR}/deploy/nginx-http.conf.template" "${target}"
