@@ -79,8 +79,8 @@ server {
     listen [::]:443 ssl http2;
     server_name ${N8N_DOMAIN};
 
-    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/${N8N_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${N8N_DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
@@ -222,14 +222,22 @@ install_nginx_config() {
   local target="/etc/nginx/sites-available/lowkey-${APP_ENV}.conf"
   local enabled="/etc/nginx/sites-enabled/lowkey-${APP_ENV}.conf"
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
+  local n8n_cert_dir=""
+
+  if [[ -n "${N8N_DOMAIN}" ]]; then
+    n8n_cert_dir="/etc/letsencrypt/live/${N8N_DOMAIN}"
+  fi
 
   if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
     render_template "${ROOT_DIR}/deploy/nginx-https.conf.template" "${target}"
-    append_n8n_http_config "${target}"
-    append_n8n_https_config "${target}"
   else
     render_template "${ROOT_DIR}/deploy/nginx-http.conf.template" "${target}"
-    append_n8n_http_config "${target}"
+  fi
+
+  append_n8n_http_config "${target}"
+
+  if [[ -n "${n8n_cert_dir}" && -f "${n8n_cert_dir}/fullchain.pem" && -f "${n8n_cert_dir}/privkey.pem" ]]; then
+    append_n8n_https_config "${target}"
   fi
 
   ln -sf "${target}" "${enabled}"
@@ -239,7 +247,12 @@ install_nginx_config() {
 
 ensure_certificate() {
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
+  local n8n_cert_dir=""
   local needs_expand="false"
+
+  if [[ -n "${N8N_DOMAIN}" ]]; then
+    n8n_cert_dir="/etc/letsencrypt/live/${N8N_DOMAIN}"
+  fi
 
   if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
     if [[ -n "${AI_DOMAIN}" ]]; then
@@ -249,41 +262,40 @@ ensure_certificate() {
     else
       needs_expand="false"
     fi
+  fi
 
-    if [[ -n "${N8N_DOMAIN}" ]]; then
-      if ! openssl x509 -in "${cert_dir}/fullchain.pem" -noout -text | grep -q "DNS:${N8N_DOMAIN}"; then
-        needs_expand="true"
-      fi
+  if [[ ! -f "${cert_dir}/fullchain.pem" || ! -f "${cert_dir}/privkey.pem" || "${needs_expand}" == "true" ]]; then
+    local certbot_args=(
+      certbot certonly
+      --webroot
+      -w /var/www/certbot
+      -d "${DOMAIN}"
+      --non-interactive
+      --agree-tos
+      -m "${LETSENCRYPT_EMAIL}"
+    )
+
+    if [[ -n "${AI_DOMAIN}" ]]; then
+      certbot_args+=(-d "${AI_DOMAIN}")
     fi
+
+    if [[ "${needs_expand}" == "true" ]]; then
+      certbot_args+=(--expand)
+    fi
+
+    "${certbot_args[@]}"
   fi
 
-  if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" && "${needs_expand}" != "true" ]]; then
-    return
+  if [[ -n "${N8N_DOMAIN}" && ! -f "${n8n_cert_dir}/fullchain.pem" ]]; then
+    certbot certonly \
+      --webroot \
+      -w /var/www/certbot \
+      -d "${N8N_DOMAIN}" \
+      --cert-name "${N8N_DOMAIN}" \
+      --non-interactive \
+      --agree-tos \
+      -m "${LETSENCRYPT_EMAIL}"
   fi
-
-  local certbot_args=(
-    certbot certonly
-    --webroot
-    -w /var/www/certbot
-    -d "${DOMAIN}"
-    --non-interactive
-    --agree-tos
-    -m "${LETSENCRYPT_EMAIL}"
-  )
-
-  if [[ -n "${AI_DOMAIN}" ]]; then
-    certbot_args+=(-d "${AI_DOMAIN}")
-  fi
-
-  if [[ -n "${N8N_DOMAIN}" ]]; then
-    certbot_args+=(-d "${N8N_DOMAIN}")
-  fi
-
-  if [[ "${needs_expand}" == "true" ]]; then
-    certbot_args+=(--expand)
-  fi
-
-  "${certbot_args[@]}"
 }
 
 deploy_stack() {
