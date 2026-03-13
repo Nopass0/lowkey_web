@@ -207,12 +207,15 @@ EOF
 }
 
 write_env_files() {
+  local n8n_runtime_dir="${ROOT_DIR}/deploy/runtime/${APP_ENV}/n8n"
+
   write_compose_env_file
   write_backend_env_file
   write_n8n_env_file
 
   mkdir -p "${ROOT_DIR}/deploy/runtime/${APP_ENV}/uploads"
-  mkdir -p "${ROOT_DIR}/deploy/runtime/${APP_ENV}/n8n"
+  mkdir -p "${n8n_runtime_dir}"
+  chown -R 1000:1000 "${n8n_runtime_dir}"
 }
 
 install_nginx_config() {
