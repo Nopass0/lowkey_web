@@ -5,16 +5,17 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./.env.backend
+      - path: ./.env.backend
+        required: false
     environment:
       HOST: 0.0.0.0
       NODE_ENV: production
       PORT: 3001
       AI_LOCAL_BASE_URL: http://ollama:11434
     volumes:
-      - ./deploy/runtime/${APP_ENV}/uploads:/app/uploads
+      - ./deploy/runtime/${APP_ENV:-main}/uploads:/app/uploads
     ports:
-      - "127.0.0.1:${BACKEND_BIND_PORT}:3001"
+      - "127.0.0.1:${BACKEND_BIND_PORT:-3101}:3001"
     depends_on:
       - ollama
     healthcheck:
@@ -33,18 +34,18 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3101}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3100}
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       HOSTNAME: 0.0.0.0
       PORT: 3000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3101}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3100}
     ports:
-      - "127.0.0.1:${FRONTEND_BIND_PORT}:3000"
+      - "127.0.0.1:${FRONTEND_BIND_PORT:-3100}:3000"
     healthcheck:
       test:
         - CMD
@@ -57,12 +58,15 @@ services:
       start_period: 30s
 
   n8n:
+    profiles:
+      - automation
     build:
       context: ./n8n
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./.env.n8n
+      - path: ./.env.n8n
+        required: false
     environment:
       N8N_LISTEN_ADDRESS: 0.0.0.0
       N8N_PORT: 5678
@@ -70,12 +74,12 @@ services:
       NODE_PATH: /opt/n8n-external/node_modules
       NODE_FUNCTION_ALLOW_BUILTIN: "*"
       NODE_FUNCTION_ALLOW_EXTERNAL: axios,lodash,dayjs,moment,uuid,zod,cheerio
-      TZ: ${GENERIC_TIMEZONE}
-      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+      TZ: ${GENERIC_TIMEZONE:-Asia/Yekaterinburg}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Asia/Yekaterinburg}
     ports:
-      - "127.0.0.1:${N8N_BIND_PORT}:5678"
+      - "127.0.0.1:${N8N_BIND_PORT:-5678}:5678"
     volumes:
-      - ./deploy/runtime/${APP_ENV}/n8n:/home/node/.n8n
+      - ./deploy/runtime/${APP_ENV:-main}/n8n:/home/node/.n8n
     healthcheck:
       test:
         - CMD-SHELL
@@ -89,4 +93,4 @@ services:
     image: ollama/ollama:latest
     restart: unless-stopped
     volumes:
-      - ./deploy/runtime/${APP_ENV}/ollama:/root/.ollama
+      - ./deploy/runtime/${APP_ENV:-main}/ollama:/root/.ollama
