@@ -305,7 +305,7 @@ deploy_stack() {
   export DOCKER_BUILDKIT=1
   export COMPOSE_DOCKER_CLI_BUILD=1
 
-  "${compose_cmd[@]}" up -d --remove-orphans ollama backend frontend n8n
+  "${compose_cmd[@]}" up -d --build --remove-orphans ollama backend frontend n8n
 
   local backend_url="http://127.0.0.1:${BACKEND_BIND_PORT}/"
   local frontend_url="http://127.0.0.1:${FRONTEND_BIND_PORT}/"

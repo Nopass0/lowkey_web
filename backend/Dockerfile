@@ -28,4 +28,4 @@ COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 ENV NODE_ENV=production
 EXPOSE 3001
 
-CMD ["sh", "-c", "bunx prisma db push && bun run src/index.ts"]
+CMD ["bun", "run", "src/index.ts"]
