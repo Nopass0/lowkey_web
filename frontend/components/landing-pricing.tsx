@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { SubscriptionPlan } from "@/api/types";
-import { fetchPublicPlans } from "@/lib/public-plans";
+import { fallbackPlans, fetchPublicPlans } from "@/lib/public-plans";
 import { useLanding } from "@/hooks/useLanding";
 import { Button } from "./ui/button";
 import {
@@ -61,7 +61,7 @@ interface LandingPricingProps {
 }
 
 export function LandingPricing({
-  initialPlans = [],
+  initialPlans = fallbackPlans,
 }: LandingPricingProps) {
   const [period, setPeriod] = useState<(typeof periods)[number]["value"]>(
     "monthly",
@@ -77,7 +77,7 @@ export function LandingPricing({
       const data = await fetchPublicPlans();
       if (!cancelled) {
         setPlans(data);
-        setLoadError(data.length === 0);
+        setLoadError(data === fallbackPlans);
       }
     };
 
@@ -121,7 +121,8 @@ export function LandingPricing({
           </motion.p>
           {loadError ? (
             <p className="mt-3 text-sm text-muted-foreground">
-              Не удалось загрузить тарифы из базы данных.
+              Публичный API временно недоступен, поэтому показан резервный набор
+              тарифов.
             </p>
           ) : null}
         </div>
@@ -223,12 +224,6 @@ export function LandingPricing({
             );
           })}
         </div>
-
-        {!plans.length ? (
-          <div className="mx-auto mt-8 max-w-2xl rounded-3xl border border-dashed border-border/60 bg-background/70 px-6 py-10 text-center text-muted-foreground">
-            Тарифы временно недоступны.
-          </div>
-        ) : null}
       </div>
     </section>
   );

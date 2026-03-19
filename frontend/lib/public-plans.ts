@@ -5,14 +5,14 @@ export const fallbackPlans: SubscriptionPlan[] = [
   {
     id: "starter",
     name: "Начальный",
-    prices: { monthly: 149, "3months": 129, "6months": 99, yearly: 79 },
-    features: ["1 устройство", "Базовая скорость", "Доступ к 5 локациям"],
+    prices: { monthly: 199, "3months": 169, "6months": 149, yearly: 129 },
+    features: ["1 устройство", "Базовая скорость"],
     isPopular: false,
   },
   {
     id: "pro",
     name: "Продвинутый",
-    prices: { monthly: 299, "3months": 249, "6months": 199, yearly: 149 },
+    prices: { monthly: 349, "3months": 299, "6months": 249, yearly: 199 },
     features: [
       "3 устройства",
       "Высокая скорость",
@@ -24,7 +24,7 @@ export const fallbackPlans: SubscriptionPlan[] = [
   {
     id: "advanced",
     name: "Максимальный",
-    prices: { monthly: 499, "3months": 399, "6months": 349, yearly: 249 },
+    prices: { monthly: 549, "3months": 469, "6months": 399, yearly: 299 },
     features: [
       "5 устройств",
       "Максимальная скорость",
@@ -53,18 +53,19 @@ export async function fetchPublicPlans(): Promise<SubscriptionPlan[]> {
     }
 
     const data = (await response.json()) as SubscriptionPlan[];
-    return data;
+    return data.length > 0 ? data : fallbackPlans;
   } catch {
-    return [];
+    return fallbackPlans;
   }
 }
 
 export function getLowestDisplayedPlanPrice(plans: SubscriptionPlan[]): number {
   const prices = plans.flatMap((plan) =>
     Object.values(plan.prices).filter(
-      (value): value is number => typeof value === "number" && Number.isFinite(value),
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
     ),
   );
 
-  return prices.length > 0 ? Math.min(...prices) : 0;
+  return prices.length > 0 ? Math.min(...prices) : 129;
 }
