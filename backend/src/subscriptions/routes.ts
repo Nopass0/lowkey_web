@@ -13,31 +13,32 @@ const PERIOD_DAYS: Record<string, number> = {
   yearly: 365,
 };
 
-const publicSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).get(
-  "/plans",
-  async () => {
-    const plans = await db.subscriptionPlan.findMany({
-      where: { isActive: true },
-      include: { prices: true },
-      orderBy: { sortOrder: "asc" },
+async function listPublicPlans() {
+  const plans = await db.subscriptionPlan.findMany({
+    where: { isActive: true },
+    include: { prices: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return plans.map((plan) => {
+    const priceMap: Record<string, number> = {};
+    plan.prices.forEach((priceItem) => {
+      priceMap[priceItem.period] = priceItem.price;
     });
 
-    return plans.map((plan) => {
-      const priceMap: Record<string, number> = {};
-      plan.prices.forEach((priceItem) => {
-        priceMap[priceItem.period] = priceItem.price;
-      });
+    return {
+      id: plan.slug,
+      name: plan.name,
+      prices: priceMap,
+      features: plan.features,
+      isPopular: plan.isPopular,
+    };
+  });
+}
 
-      return {
-        id: plan.slug,
-        name: plan.name,
-        prices: priceMap,
-        features: plan.features,
-        isPopular: plan.isPopular,
-      };
-    });
-  },
-);
+const publicSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" })
+  .get("/plans", async () => listPublicPlans())
+  .get("/public-plans", async () => listPublicPlans());
 
 const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" })
   .use(authMiddleware)

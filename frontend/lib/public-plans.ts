@@ -39,11 +39,14 @@ export const fallbackPlans: SubscriptionPlan[] = [
 
 export async function fetchPublicPlans(): Promise<SubscriptionPlan[]> {
   try {
-    const response = await fetch(`${API_CONFIG.baseUrl}/subscriptions/plans`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${API_CONFIG.baseUrl}/subscriptions/public-plans`,
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
