@@ -169,6 +169,55 @@ export interface SubscriptionPlan {
   prices: Record<string, number>; // period -> price in RUB
   features: string[];
   isPopular?: boolean;
+  promoActive?: boolean;
+  promoPrice?: number | null;
+  promoLabel?: string | null;
+}
+
+/** Saved payment method (card) */
+export interface PaymentMethod {
+  id: string;
+  yokassaMethodId: string;
+  type: string;
+  title: string;
+  cardLast4: string | null;
+  cardBrand: string | null;
+  cardExpMonth: number | null;
+  cardExpYear: number | null;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+/** POST /yokassa/topup response */
+export interface YKTopupResponse {
+  paymentId: string;
+  yokassaPaymentId: string;
+  status: string;
+  confirmationUrl: string | null;
+  amount: number;
+}
+
+/** POST /yokassa/link-card response */
+export interface YKLinkCardResponse {
+  paymentId: string;
+  yokassaPaymentId: string;
+  confirmationUrl: string | null;
+}
+
+/** GET /yokassa/payments/:id/status */
+export interface YKPaymentStatusResponse {
+  paymentId: string;
+  status: "pending" | "success" | "failed" | "expired";
+  amount: number;
+}
+
+/** POST /yokassa/subscribe-promo response */
+export interface YKPromoSubscribeResponse {
+  paymentId: string;
+  yokassaPaymentId: string;
+  confirmationUrl: string | null;
+  promoAmount: number;
+  promoLabel: string | null;
 }
 
 // ─────────────────────────────────────────────

@@ -1,38 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
-  CreditCard,
-  Plus,
-  Settings2,
-  Trash2,
-  CheckCircle2,
-  AlertCircle,
-  Save,
-  X,
-  PlusCircle,
+  CreditCard, Plus, Settings2, Trash2, CheckCircle2, AlertCircle, Save,
+  X, PlusCircle, Tag, TestTube2, Rocket, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiClient } from "@/api/client";
 import { SubscriptionPlan } from "@/api/types";
 import { Loader } from "@/components/ui/loader";
@@ -43,46 +22,77 @@ interface AdminPlan extends SubscriptionPlan {
   isActive: boolean;
   sortOrder: number;
   prices: Record<string, number>;
+  promoActive: boolean;
+  promoPrice: number | null;
+  promoLabel: string | null;
+  promoMaxUses: number | null;
+  promoUsed: number;
 }
 
 export default function TariffsAdminPage() {
   const [plans, setPlans] = useState<AdminPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<Partial<AdminPlan> | null>(
-    null,
-  );
+  const [editingPlan, setEditingPlan] = useState<Partial<AdminPlan> | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [ykMode, setYkMode] = useState<"test" | "production">("test");
+  const [ykLoading, setYkLoading] = useState(false);
+  const [ykSaving, setYkSaving] = useState(false);
 
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     setIsLoading(true);
     try {
-      // We use the admin endpoint to get full details including sortOrder and isActive
       const res = await apiClient.get<any[]>("/admin/tariffs");
-
       const transformed = res.map((plan) => ({
         ...plan,
-        prices: (plan.prices || []).reduce(
-          (acc: Record<string, number>, p: any) => {
-            acc[p.period] = p.price;
-            return acc;
-          },
-          {},
-        ),
+        prices: (plan.prices || []).reduce((acc: Record<string, number>, p: any) => {
+          acc[p.period] = p.price;
+          return acc;
+        }, {}),
+        promoActive: plan.promoActive ?? false,
+        promoPrice: plan.promoPrice ?? null,
+        promoLabel: plan.promoLabel ?? null,
+        promoMaxUses: plan.promoMaxUses ?? null,
+        promoUsed: plan.promoUsed ?? 0,
       })) as AdminPlan[];
-
       setPlans(transformed);
     } catch (err) {
-      console.error(err);
       toast.error("Ошибка при загрузке тарифов");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const fetchYKSettings = useCallback(async () => {
+    setYkLoading(true);
+    try {
+      const res = await apiClient.get<{ mode: "test" | "production" }>("/admin/yokassa/settings");
+      setYkMode(res.mode);
+    } catch {
+      // ignore
+    } finally {
+      setYkLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchPlans();
-  }, []);
+    fetchYKSettings();
+  }, [fetchPlans, fetchYKSettings]);
+
+  const handleToggleYKMode = async () => {
+    const newMode = ykMode === "test" ? "production" : "test";
+    setYkSaving(true);
+    try {
+      await apiClient.patch("/admin/yokassa/settings", { mode: newMode });
+      setYkMode(newMode);
+      toast.success(`ЮKassa переключена в режим: ${newMode === "test" ? "Тестовый" : "Боевой"}`);
+    } catch {
+      toast.error("Ошибка при смене режима ЮKassa");
+    } finally {
+      setYkSaving(false);
+    }
+  };
 
   const handleEdit = (plan: AdminPlan) => {
     setEditingPlan({ ...plan });
@@ -91,18 +101,10 @@ export default function TariffsAdminPage() {
 
   const handleAddNew = () => {
     setEditingPlan({
-      slug: "",
-      name: "",
-      features: [],
-      isPopular: false,
-      isActive: true,
+      slug: "", name: "", features: [], isPopular: false, isActive: true,
       sortOrder: plans.length + 1,
-      prices: {
-        monthly: 0,
-        "3months": 0,
-        "6months": 0,
-        yearly: 0,
-      },
+      prices: { monthly: 0, "3months": 0, "6months": 0, yearly: 0 },
+      promoActive: false, promoPrice: null, promoLabel: null, promoMaxUses: null,
     });
     setIsDialogOpen(true);
   };
@@ -112,26 +114,21 @@ export default function TariffsAdminPage() {
       toast.error("Заполните основные поля (slug и название)");
       return;
     }
-
     setIsSaving(true);
     try {
-      const pricesArray = Object.entries(editingPlan.prices || {}).map(
-        ([period, price]) => ({
-          period,
-          price,
-        }),
-      );
-
+      const pricesArray = Object.entries(editingPlan.prices || {}).map(([period, price]) => ({ period, price }));
       await apiClient.post("/admin/tariffs", {
         ...editingPlan,
         prices: pricesArray,
+        promoActive: editingPlan.promoActive ?? false,
+        promoPrice: editingPlan.promoActive ? (editingPlan.promoPrice ?? null) : null,
+        promoLabel: editingPlan.promoLabel ?? null,
+        promoMaxUses: editingPlan.promoMaxUses ?? null,
       });
-
-      toast.success("Тариф сохранен");
+      toast.success("Тариф сохранён");
       setIsDialogOpen(false);
       fetchPlans();
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Ошибка при сохранении");
     } finally {
       setIsSaving(false);
@@ -139,399 +136,247 @@ export default function TariffsAdminPage() {
   };
 
   const handleDelete = async (slug: string) => {
-    if (!confirm(`Вы уверены, что хотите удалить тариф ${slug}?`)) return;
-
+    if (!confirm(`Удалить тариф ${slug}?`)) return;
     try {
       await apiClient.delete(`/admin/tariffs/${slug}`);
-      toast.success("Тариф удален");
+      toast.success("Тариф удалён");
       fetchPlans();
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Ошибка при удалении");
     }
   };
 
   const updatePrice = (period: string, value: string) => {
-    const price = parseFloat(value) || 0;
-    setEditingPlan((prev) => ({
-      ...prev,
-      prices: { ...(prev?.prices || {}), [period]: price },
-    }));
+    setEditingPlan((prev) => ({ ...prev, prices: { ...(prev?.prices || {}), [period]: parseFloat(value) || 0 } }));
   };
-
   const updateFeature = (index: number, value: string) => {
-    const newFeatures = [...(editingPlan?.features || [])];
-    newFeatures[index] = value;
-    setEditingPlan((prev) => ({ ...prev, features: newFeatures }));
+    const f = [...(editingPlan?.features || [])];
+    f[index] = value;
+    setEditingPlan((prev) => ({ ...prev, features: f }));
   };
+  const addFeature = () => setEditingPlan((prev) => ({ ...prev, features: [...(prev?.features || []), ""] }));
+  const removeFeature = (index: number) => setEditingPlan((prev) => ({ ...prev, features: (prev?.features || []).filter((_, i) => i !== index) }));
 
-  const addFeature = () => {
-    setEditingPlan((prev) => ({
-      ...prev,
-      features: [...(prev?.features || []), ""],
-    }));
-  };
-
-  const removeFeature = (index: number) => {
-    setEditingPlan((prev) => ({
-      ...prev,
-      features: (prev?.features || []).filter((_, i) => i !== index),
-    }));
-  };
-
-  if (isLoading)
-    return (
-      <div className="flex justify-center p-20">
-        <Loader size={48} />
-      </div>
-    );
+  if (isLoading) return <div className="flex justify-center p-20"><Loader size={48} /></div>;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight mb-1 flex items-center gap-2">
             <CreditCard className="w-8 h-8 text-primary" />
             Управление тарифами
           </h1>
-          <p className="text-muted-foreground">
-            Создание и редактирование тарифных планов Lowkey VPN
-          </p>
+          <p className="text-muted-foreground">Тарифные планы и настройки платёжной системы</p>
         </div>
         <Button onClick={handleAddNew} className="w-full md:w-auto gap-2">
-          <PlusCircle className="w-4 h-4" />
-          Добавить тариф
+          <PlusCircle className="w-4 h-4" />Добавить тариф
         </Button>
       </div>
 
+      {/* YooKassa mode */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" />
+            Режим ЮKassa
+          </CardTitle>
+          <CardDescription>Переключение между тестовым и боевым магазином</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {ykLoading ? (
+            <Loader size={24} />
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-semibold text-sm ${ykMode === "test" ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-600" : "border-green-500/50 bg-green-500/10 text-green-600"}`}>
+                {ykMode === "test" ? <TestTube2 className="w-4 h-4" /> : <Rocket className="w-4 h-4" />}
+                {ykMode === "test" ? "Тестовый режим" : "Боевой режим"}
+              </div>
+              <Button variant="outline" onClick={handleToggleYKMode} disabled={ykSaving} className="h-10 rounded-xl font-semibold">
+                {ykSaving ? <Loader size={16} /> : ykMode === "test" ? <><ToggleRight className="w-4 h-4 mr-2" />Включить боевой</> : <><ToggleLeft className="w-4 h-4 mr-2" />Включить тестовый</>}
+              </Button>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-3">
+            {ykMode === "test" ? "Используются тестовые данные (YOKASSA_TEST_SHOP_ID / YOKASSA_TEST_SECRET). Реальных списаний нет." : "⚠️ Используется боевой магазин (YOKASSA_SHOP_ID / YOKASSA_SECRET). Реальные платежи!"}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Plans grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {plans.map((plan) => (
-          <Card
-            key={plan.id}
-            className="relative overflow-hidden group border-border/50 bg-card/50 backdrop-blur-sm"
-          >
+          <Card key={plan.id} className="relative overflow-hidden group border-border/50 bg-card/50">
             {!plan.isActive && (
               <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                <Badge
-                  variant="outline"
-                  className="text-lg px-4 py-1 border-destructive text-destructive bg-destructive/5 font-bold uppercase tracking-widest shadow-lg"
-                >
-                  Неактивен
-                </Badge>
+                <Badge variant="outline" className="text-lg px-4 py-1 border-destructive text-destructive bg-destructive/5 font-bold uppercase">Неактивен</Badge>
               </div>
             )}
             <CardHeader className="pb-4">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl font-bold">
-                      {plan.name}
-                    </CardTitle>
-                    {plan.isPopular && (
-                      <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] py-0 px-2">
-                        POPULAR
-                      </Badge>
-                    )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CardTitle className="text-xl font-bold">{plan.name}</CardTitle>
+                    {plan.isPopular && <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] py-0 px-2">POPULAR</Badge>}
+                    {plan.promoActive && <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-[10px] py-0 px-2 gap-1"><Tag className="w-2.5 h-2.5" />АКЦИЯ</Badge>}
                   </div>
-                  <CardDescription className="font-mono text-xs uppercase tracking-tighter opacity-70">
-                    ID: {plan.slug}
-                  </CardDescription>
+                  <CardDescription className="font-mono text-xs uppercase tracking-tighter opacity-70">ID: {plan.slug}</CardDescription>
+                  {plan.promoActive && plan.promoPrice != null && (
+                    <div className="text-xs text-orange-500 font-medium mt-1">
+                      {plan.promoLabel ?? "Промо"}: {plan.promoPrice} ₽
+                      {plan.promoMaxUses ? ` · ${plan.promoUsed}/${plan.promoMaxUses} использований` : ` · ${plan.promoUsed} использований`}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 z-20">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleEdit(plan)}
-                    className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-colors"
-                  >
-                    <Settings2 className="h-4 h-4" />
+                  <Button variant="outline" size="icon" onClick={() => handleEdit(plan)} className="h-8 w-8 hover:bg-primary/10 hover:text-primary">
+                    <Settings2 className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDelete(plan.slug)}
-                    className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive transition-colors"
-                  >
-                    <Trash2 className="h-4 h-4" />
+                  <Button variant="outline" size="icon" onClick={() => handleDelete(plan.slug)} className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {["monthly", "3months", "6months", "yearly"].map((period) => (
-                    <div
-                      key={period}
-                      className="p-3 rounded-xl bg-muted/30 border border-border/50 flex flex-col gap-1"
-                    >
+                    <div key={period} className="p-3 rounded-xl bg-muted/30 border border-border/50 flex flex-col gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {period === "monthly"
-                          ? "1 мес"
-                          : period === "3months"
-                            ? "3 мес"
-                            : period === "6months"
-                              ? "6 мес"
-                              : "1 год"}
+                        {period === "monthly" ? "1 мес" : period === "3months" ? "3 мес" : period === "6months" ? "6 мес" : "1 год"}
                       </span>
-                      <span className="text-lg font-black tracking-tighter">
-                        {plan.prices[period] || 0} ₽
-                      </span>
+                      <span className="text-lg font-black tracking-tighter">{plan.prices[period] || 0} ₽</span>
                     </div>
                   ))}
                 </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/50 border-b border-border/50 pb-2">
-                    Особенности (Features)
-                  </h4>
-                  <ul className="grid grid-cols-1 gap-2">
-                    {plan.features.map((f, i) => (
-                      <li
-                        key={i}
-                        className="flex items-center gap-2 text-sm text-muted-foreground group/feature"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                        <span className="truncate">{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ul className="grid grid-cols-1 gap-1.5">
+                  {plan.features.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />{f}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </CardContent>
           </Card>
         ))}
         {plans.length === 0 && (
-          <div className="col-span-full py-20 bg-muted/20 border-2 border-dashed border-border/50 rounded-3xl flex flex-col items-center justify-center text-muted-foreground animate-pulse">
+          <div className="col-span-full py-20 bg-muted/20 border-2 border-dashed border-border/50 rounded-3xl flex flex-col items-center justify-center text-muted-foreground">
             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
             <p className="font-medium">Тарифные планы не найдены</p>
-            <Button variant="link" onClick={handleAddNew}>
-              Создать первый тариф
-            </Button>
+            <Button variant="link" onClick={handleAddNew}>Создать первый тариф</Button>
           </div>
         )}
       </div>
 
+      {/* Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[1100px] w-[95vw] max-h-[95vh] overflow-y-auto p-0 border-none bg-transparent shadow-none">
-          <div className="bg-card border border-border/50 rounded-[2rem] shadow-2xl overflow-hidden">
-            <div className="p-8 md:p-12">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-black tracking-tight">
-                  {editingPlan?.slug ? "Редактировать тариф" : "Новый тариф"}
-                </DialogTitle>
-                <DialogDescription>
-                  Настройте параметры тарифного плана и его стоимость для разных
-                  периодов.
-                </DialogDescription>
-              </DialogHeader>
+        <DialogContent className="sm:max-w-[900px] w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black">{editingPlan?.slug ? "Редактировать тариф" : "Новый тариф"}</DialogTitle>
+            <DialogDescription>Настройте параметры тарифного плана, цены и промо-акцию.</DialogDescription>
+          </DialogHeader>
 
-              {editingPlan && (
-                <div className="grid gap-8 py-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label
-                          htmlFor="slug"
-                          className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
-                        >
-                          Slug (идентификатор)
-                        </Label>
-                        <Input
-                          id="slug"
-                          value={editingPlan.slug}
-                          onChange={(e) =>
-                            setEditingPlan((prev) => ({
-                              ...prev,
-                              slug: e.target.value,
-                            }))
-                          }
-                          placeholder="pro"
-                          disabled={
-                            !!plans.find(
-                              (p) => p.id === (editingPlan as any).id,
-                            )
-                          }
-                          className="h-12 bg-muted/20 border-border/50 rounded-xl"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label
-                          htmlFor="name"
-                          className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
-                        >
-                          Название
-                        </Label>
-                        <Input
-                          id="name"
-                          value={editingPlan.name}
-                          onChange={(e) =>
-                            setEditingPlan((prev) => ({
-                              ...prev,
-                              name: e.target.value,
-                            }))
-                          }
-                          placeholder="Продвинутый"
-                          className="h-12 bg-muted/20 border-border/50 rounded-xl"
-                        />
-                      </div>
-                      <div className="flex items-center gap-8 pt-2">
-                        <div className="flex items-center space-x-3">
-                          <Label
-                            htmlFor="isPopular"
-                            className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer"
-                          >
-                            Популярный
-                          </Label>
-                          <Switch
-                            id="isPopular"
-                            checked={editingPlan.isPopular}
-                            onCheckedChange={(val) =>
-                              setEditingPlan((prev) => ({
-                                ...prev,
-                                isPopular: val,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <Label
-                            htmlFor="isActive"
-                            className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer"
-                          >
-                            Активен
-                          </Label>
-                          <Switch
-                            id="isActive"
-                            checked={editingPlan.isActive}
-                            onCheckedChange={(val) =>
-                              setEditingPlan((prev) => ({
-                                ...prev,
-                                isActive: val,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 p-8 rounded-[2rem] bg-muted/30 border border-border/50 shadow-inner">
-                      <h4 className="text-sm font-black uppercase tracking-widest text-muted-foreground/50 border-b border-border/50 pb-4 mb-4">
-                        Цены в месяц (₽)
-                      </h4>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div className="space-y-2">
-                          <Label className="text-[10px] font-bold text-muted-foreground/70">
-                            Ежемесячно
-                          </Label>
-                          <Input
-                            type="number"
-                            value={editingPlan.prices?.monthly}
-                            onChange={(e) =>
-                              updatePrice("monthly", e.target.value)
-                            }
-                            className="h-10 border-border shadow-none"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-[10px] font-bold text-muted-foreground/70">
-                            за 3 мес
-                          </Label>
-                          <Input
-                            type="number"
-                            value={editingPlan.prices?.["3months"]}
-                            onChange={(e) =>
-                              updatePrice("3months", e.target.value)
-                            }
-                            className="h-10 border-border shadow-none"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-[10px] font-bold text-muted-foreground/70">
-                            за 6 мес
-                          </Label>
-                          <Input
-                            type="number"
-                            value={editingPlan.prices?.["6months"]}
-                            onChange={(e) =>
-                              updatePrice("6months", e.target.value)
-                            }
-                            className="h-10 border-border shadow-none"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-[10px] font-bold text-muted-foreground/70">
-                            за 1 год
-                          </Label>
-                          <Input
-                            type="number"
-                            value={editingPlan.prices?.yearly}
-                            onChange={(e) =>
-                              updatePrice("yearly", e.target.value)
-                            }
-                            className="h-10 border-border shadow-none"
-                          />
-                        </div>
-                      </div>
-                    </div>
+          {editingPlan && (
+            <div className="grid gap-6 py-4">
+              {/* Basic info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Slug</Label>
+                    <Input value={editingPlan.slug} onChange={(e) => setEditingPlan((p) => ({ ...p, slug: e.target.value }))}
+                      placeholder="pro" disabled={!!plans.find((p) => p.id === (editingPlan as any).id)}
+                      className="h-11 bg-muted/20 rounded-xl" />
                   </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-border/50 pb-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        Особенности тарифа
-                      </Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={addFeature}
-                        className="h-8 text-[10px] font-bold uppercase tracking-wider gap-2"
-                      >
-                        <Plus className="w-3 h-3" /> Добавить
-                      </Button>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Название</Label>
+                    <Input value={editingPlan.name} onChange={(e) => setEditingPlan((p) => ({ ...p, name: e.target.value }))}
+                      placeholder="Продвинутый" className="h-11 bg-muted/20 rounded-xl" />
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <Switch id="isPopular" checked={editingPlan.isPopular} onCheckedChange={(v) => setEditingPlan((p) => ({ ...p, isPopular: v }))} />
+                      <Label htmlFor="isPopular" className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer">Популярный</Label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {(editingPlan.features || []).map((f, i) => (
-                        <div key={i} className="flex gap-2">
-                          <Input
-                            value={f}
-                            onChange={(e) => updateFeature(i, e.target.value)}
-                            placeholder="Напр: 3 устройства"
-                            className="h-10 bg-muted/20 border-border"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeFeature(i)}
-                            className="shrink-0 h-10 w-10 hover:text-destructive"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
+                    <div className="flex items-center gap-2">
+                      <Switch id="isActive" checked={editingPlan.isActive} onCheckedChange={(v) => setEditingPlan((p) => ({ ...p, isActive: v }))} />
+                      <Label htmlFor="isActive" className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer">Активен</Label>
                     </div>
                   </div>
                 </div>
-              )}
 
-              <DialogFooter className="gap-2 sm:gap-0 pt-6">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="rounded-xl px-8 h-12"
-                >
-                  Отмена
-                </Button>
-                <Button
-                  disabled={isSaving}
-                  onClick={handleSave}
-                  className="rounded-xl px-10 h-12 bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20"
-                >
-                  {isSaving ? "Сохранение..." : "Сохранить"}
-                </Button>
-              </DialogFooter>
+                {/* Prices */}
+                <div className="p-5 rounded-2xl bg-muted/30 border border-border/50 space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 pb-3">Цены в месяц (₽)</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    {["monthly", "3months", "6months", "yearly"].map((period) => (
+                      <div key={period} className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-muted-foreground/70">
+                          {period === "monthly" ? "Ежемесячно" : period === "3months" ? "3 месяца" : period === "6months" ? "6 месяцев" : "1 год"}
+                        </Label>
+                        <Input type="number" value={editingPlan.prices?.[period] ?? 0} onChange={(e) => updatePrice(period, e.target.value)} className="h-10 shadow-none" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Promo section */}
+              <div className="p-5 rounded-2xl border border-orange-500/20 bg-orange-500/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold flex items-center gap-2"><Tag className="w-4 h-4 text-orange-500" />Промо-акция</h4>
+                  <div className="flex items-center gap-2">
+                    <Switch id="promoActive" checked={editingPlan.promoActive ?? false} onCheckedChange={(v) => setEditingPlan((p) => ({ ...p, promoActive: v }))} />
+                    <Label htmlFor="promoActive" className="text-sm font-semibold cursor-pointer">{editingPlan.promoActive ? "Включена" : "Отключена"}</Label>
+                  </div>
+                </div>
+                {editingPlan.promoActive && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-muted-foreground">Промо-цена (₽)</Label>
+                      <Input type="number" value={editingPlan.promoPrice ?? ""} onChange={(e) => setEditingPlan((p) => ({ ...p, promoPrice: parseFloat(e.target.value) || null }))}
+                        placeholder="50" className="h-10 shadow-none" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-muted-foreground">Метка акции</Label>
+                      <Input value={editingPlan.promoLabel ?? ""} onChange={(e) => setEditingPlan((p) => ({ ...p, promoLabel: e.target.value || null }))}
+                        placeholder="Первый месяц за 50 ₽" className="h-10 shadow-none" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-muted-foreground">Макс. использований</Label>
+                      <Input type="number" value={editingPlan.promoMaxUses ?? ""} onChange={(e) => setEditingPlan((p) => ({ ...p, promoMaxUses: parseInt(e.target.value) || null }))}
+                        placeholder="∞ неограничено" className="h-10 shadow-none" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Features */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Особенности тарифа</Label>
+                  <Button variant="ghost" size="sm" onClick={addFeature} className="h-8 text-xs gap-1.5"><Plus className="w-3 h-3" />Добавить</Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(editingPlan.features || []).map((f, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input value={f} onChange={(e) => updateFeature(i, e.target.value)} placeholder="Напр: 3 устройства" className="h-10 bg-muted/20 border-border" />
+                      <Button variant="ghost" size="icon" onClick={() => removeFeature(i)} className="shrink-0 h-10 w-10 hover:text-destructive"><X className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-xl px-8 h-11">Отмена</Button>
+            <Button disabled={isSaving} onClick={handleSave} className="rounded-xl px-10 h-11 font-bold">
+              {isSaving ? "Сохранение..." : <><Save className="w-4 h-4 mr-2" />Сохранить</>}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

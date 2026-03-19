@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bunx prisma:*)",
+      "Bash(./node_modules/.bin/prisma db:*)"
+    ]
+  }
+}

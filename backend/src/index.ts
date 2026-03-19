@@ -14,6 +14,7 @@ import { db } from "./db";
 import { authRoutes } from "./auth/routes";
 import { userRoutes } from "./user/routes";
 import { paymentRoutes } from "./payments/routes";
+import { yokassaPaymentRoutes, yokassaWebhookRoute } from "./payments/yokassa-routes";
 import { subscriptionRoutes } from "./subscriptions/routes";
 import { deviceRoutes } from "./devices/routes";
 import { promoRoutes } from "./promo/routes";
@@ -25,7 +26,7 @@ import { adminWithdrawalRoutes } from "./admin/withdrawals/routes";
 import { adminFinanceRoutes } from "./admin/finance/routes";
 import { adminServerRoutes } from "./admin/server/routes";
 import { adminAppRoutes } from "./admin/apps/routes";
-import { adminTariffRoutes } from "./admin/tariffs/routes";
+import { adminTariffRoutes, adminYokassaRoutes } from "./admin/tariffs/routes";
 import {
   adminMailingRoutes,
   processPendingMailings,
@@ -174,6 +175,8 @@ const app = new Elysia()
   .use(authRoutes)
   .use(userRoutes)
   .use(paymentRoutes)
+  .use(yokassaPaymentRoutes)
+  .use(yokassaWebhookRoute)
   .use(subscriptionRoutes)
   .use(deviceRoutes)
   .use(promoRoutes)
@@ -186,6 +189,7 @@ const app = new Elysia()
   .use(adminServerRoutes)
   .use(adminAppRoutes)
   .use(adminTariffRoutes)
+  .use(adminYokassaRoutes)
   .use(adminMailingRoutes)
   .use(vpnServerRoutes)
   .use(aiRoutes)

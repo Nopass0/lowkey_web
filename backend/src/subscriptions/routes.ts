@@ -33,6 +33,9 @@ async function listPublicPlans() {
       prices: priceMap,
       features: plan.features,
       isPopular: plan.isPopular,
+      promoActive: plan.promoActive,
+      promoPrice: plan.promoPrice,
+      promoLabel: plan.promoLabel,
     };
   });
 }

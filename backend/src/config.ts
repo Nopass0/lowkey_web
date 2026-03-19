@@ -71,6 +71,21 @@ export const config = {
   /** Default local model name */
   AI_LOCAL_MODEL: process.env.AI_LOCAL_MODEL ?? "qwen3.5:0.8b",
 
+  /** YooKassa production shop ID */
+  YOKASSA_SHOP_ID: process.env.YOKASSA_SHOP_ID ?? "",
+
+  /** YooKassa production secret key */
+  YOKASSA_SECRET: process.env.YOKASSA_SECRET ?? "",
+
+  /** YooKassa test shop ID */
+  YOKASSA_TEST_SHOP_ID: process.env.YOKASSA_TEST_SHOP_ID ?? "",
+
+  /** YooKassa test secret key */
+  YOKASSA_TEST_SECRET: process.env.YOKASSA_TEST_SECRET ?? "",
+
+  /** Public base URL of the site (for YooKassa return URL) */
+  SITE_URL: process.env.SITE_URL ?? "https://lowkey.su",
+
   /** Server port */
   PORT: parseInt(process.env.PORT ?? "3001", 10),
 } as const;
