@@ -102,6 +102,7 @@ export interface UserProfile {
   balance: number;
   referralBalance: number;
   hideAiMenu: boolean;
+  hideAiMenuForAll: boolean;
   subscription: Subscription | null;
   joinedAt: string;
   telegramId: string | null;
@@ -117,6 +118,8 @@ export interface Transaction {
   type: "topup" | "subscription" | "referral_earning" | "withdrawal";
   amount: number;
   title: string;
+  isTest?: boolean;
+  paymentId?: string | null;
   createdAt: string;
 }
 
@@ -154,6 +157,7 @@ export interface SubscriptionPurchaseRequest {
   planId: string;
   /** "monthly" | "3months" | "6months" | "yearly" */
   period: string;
+  autoRenewPaymentMethodId?: string | null;
 }
 
 /** POST /subscriptions/purchase response */
@@ -185,6 +189,7 @@ export interface PaymentMethod {
   cardExpMonth: number | null;
   cardExpYear: number | null;
   isDefault: boolean;
+  allowAutoCharge?: boolean;
   createdAt: string;
 }
 
@@ -209,6 +214,7 @@ export interface YKPaymentStatusResponse {
   paymentId: string;
   status: "pending" | "success" | "failed" | "expired";
   amount: number;
+  isTest?: boolean;
 }
 
 /** POST /yokassa/subscribe-promo response */
@@ -218,6 +224,14 @@ export interface YKPromoSubscribeResponse {
   confirmationUrl: string | null;
   promoAmount: number;
   promoLabel: string | null;
+}
+
+export interface AdminYokassaSettings {
+  mode: "test" | "production";
+  testSubscriptionEnabled: boolean;
+  hideAiMenuForAll: boolean;
+  productionCredentialsConfigured: boolean;
+  testCredentialsConfigured: boolean;
 }
 
 // ─────────────────────────────────────────────

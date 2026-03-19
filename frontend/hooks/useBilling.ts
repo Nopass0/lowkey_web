@@ -64,6 +64,7 @@ interface BillingState {
   purchaseSubscription: (
     planId: string,
     period: string,
+    autoRenewPaymentMethodId?: string,
   ) => Promise<SubscriptionPurchaseResponse | null>;
 
   /** Reset billing state to idle */
@@ -190,7 +191,7 @@ export const useBilling = create<BillingState>((set, get) => ({
     return false;
   },
 
-  purchaseSubscription: async (planId, period) => {
+  purchaseSubscription: async (planId, period, autoRenewPaymentMethodId) => {
     if (API_CONFIG.debug) {
       return {
         subscription: {
@@ -205,7 +206,7 @@ export const useBilling = create<BillingState>((set, get) => ({
     try {
       return await apiClient.post<SubscriptionPurchaseResponse>(
         "/subscriptions/purchase",
-        { planId, period },
+        { planId, period, autoRenewPaymentMethodId },
       );
     } catch {
       return null;

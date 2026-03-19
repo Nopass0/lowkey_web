@@ -7,6 +7,7 @@
 import Elysia, { t } from "elysia";
 import { db } from "../../db";
 import { adminMiddleware } from "../../auth/middleware";
+import { config } from "../../config";
 
 export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
   .use(adminMiddleware)
@@ -161,27 +162,74 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
   .use(adminMiddleware)
 
   .get("/settings", async () => {
-    const settings = await db.yokassaSettings.upsert({
-      where: { id: "global" },
-      update: {},
-      create: { id: "global", mode: "test" },
-    });
-    return { mode: settings.mode };
+    const [settings, aiSettings] = await Promise.all([
+      db.yokassaSettings.upsert({
+        where: { id: "global" },
+        update: {},
+        create: { id: "global", mode: "test", testSubscriptionEnabled: false },
+      }),
+      db.aiSettings.upsert({
+        where: { id: "global" },
+        update: {},
+        create: { id: "global" },
+      }),
+    ]);
+    return {
+      mode: settings.mode,
+      testSubscriptionEnabled: settings.testSubscriptionEnabled,
+      hideAiMenuForAll: aiSettings.hideAiMenuForAll,
+      productionCredentialsConfigured: Boolean(
+        config.YOKASSA_SHOP_ID && config.YOKASSA_SECRET,
+      ),
+      testCredentialsConfigured: Boolean(
+        config.YOKASSA_TEST_SHOP_ID && config.YOKASSA_TEST_SECRET,
+      ),
+    };
   })
 
   .patch(
     "/settings",
     async ({ body }) => {
-      const settings = await db.yokassaSettings.upsert({
-        where: { id: "global" },
-        update: { mode: body.mode },
-        create: { id: "global", mode: body.mode },
-      });
-      return { mode: settings.mode };
+      const [settings, aiSettings] = await Promise.all([
+        db.yokassaSettings.upsert({
+          where: { id: "global" },
+          update: {
+            ...(body.mode ? { mode: body.mode } : {}),
+            ...(typeof body.testSubscriptionEnabled === "boolean"
+              ? { testSubscriptionEnabled: body.testSubscriptionEnabled }
+              : {}),
+          },
+          create: {
+            id: "global",
+            mode: body.mode ?? "test",
+            testSubscriptionEnabled: body.testSubscriptionEnabled ?? false,
+          },
+        }),
+        typeof body.hideAiMenuForAll === "boolean"
+          ? db.aiSettings.upsert({
+              where: { id: "global" },
+              update: { hideAiMenuForAll: body.hideAiMenuForAll },
+              create: { id: "global", hideAiMenuForAll: body.hideAiMenuForAll },
+            })
+          : db.aiSettings.upsert({
+              where: { id: "global" },
+              update: {},
+              create: { id: "global" },
+            }),
+      ]);
+      return {
+        mode: settings.mode,
+        testSubscriptionEnabled: settings.testSubscriptionEnabled,
+        hideAiMenuForAll: aiSettings.hideAiMenuForAll,
+      };
     },
     {
       body: t.Object({
-        mode: t.Union([t.Literal("test"), t.Literal("production")]),
+        mode: t.Optional(
+          t.Union([t.Literal("test"), t.Literal("production")]),
+        ),
+        testSubscriptionEnabled: t.Optional(t.Boolean()),
+        hideAiMenuForAll: t.Optional(t.Boolean()),
       }),
     },
   );

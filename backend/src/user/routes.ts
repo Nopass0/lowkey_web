@@ -44,6 +44,11 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         where: { id: user.userId },
         include: { subscription: true },
       });
+      const aiSettings = await db.aiSettings.upsert({
+        where: { id: "global" },
+        update: {},
+        create: { id: "global" },
+      });
 
       if (!dbUser) {
         set.status = 404;
@@ -89,6 +94,7 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         balance: dbUser.balance,
         referralBalance: dbUser.referralBalance,
         hideAiMenu: dbUser.hideAiMenu,
+        hideAiMenuForAll: aiSettings.hideAiMenuForAll,
         subscription: dbUser.subscription
           ? {
               planId: dbUser.subscription.planId,
@@ -145,6 +151,8 @@ export const userRoutes = new Elysia({ prefix: "/user" })
             type: tx.type,
             amount: tx.amount,
             title: tx.title,
+            isTest: tx.isTest,
+            paymentId: tx.paymentId,
             createdAt: tx.createdAt.toISOString(),
           })),
           total,

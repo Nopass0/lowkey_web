@@ -237,12 +237,14 @@ function SavedCardsSection({
   isLoading,
   onRemove,
   onSetDefault,
+  onSetAutoCharge,
   onLinkCard,
 }: {
   methods: PaymentMethod[];
   isLoading: boolean;
   onRemove: (id: string) => void;
   onSetDefault: (id: string) => void;
+  onSetAutoCharge: (id: string, allowAutoCharge: boolean) => void;
   onLinkCard: () => void;
 }) {
   if (isLoading) {
@@ -307,6 +309,9 @@ function SavedCardsSection({
                   {card.cardExpYear}
                 </div>
               )}
+              <div className="text-xs text-muted-foreground mt-1">
+                Автосписание: {card.allowAutoCharge === false ? "выключено" : "включено"}
+              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {!card.isDefault && (
@@ -320,6 +325,14 @@ function SavedCardsSection({
                   Основная
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onSetAutoCharge(card.id, card.allowAutoCharge === false)}
+                className="h-8 px-3 text-xs rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                {card.allowAutoCharge === false ? "Вкл. авто" : "Выкл. авто"}
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
@@ -386,6 +399,7 @@ export default function BillingPage() {
     refetch: refetchCards,
     removeCard,
     setDefault,
+    setAutoCharge,
   } = usePaymentMethods();
 
   // UI state
@@ -395,6 +409,10 @@ export default function BillingPage() {
   const [topUpAmount, setTopUpAmount] = useState("500");
   const [paymentType, setPaymentType] = useState<YKPaymentType>("bank_card");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [pendingPlanPurchase, setPendingPlanPurchase] = useState<{
+    planId: string;
+    cost: number;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState(180);
 
@@ -466,6 +484,7 @@ export default function BillingPage() {
     if (ykStatus !== "success") return;
     const t = setTimeout(() => {
       setIsTopUpOpen(false);
+      setPendingPlanPurchase(null);
       ykReset();
     }, 2800);
     return () => clearTimeout(t);
@@ -478,6 +497,7 @@ export default function BillingPage() {
       setTimeout(() => {
         sbpReset();
         ykReset();
+        setPendingPlanPurchase(null);
       }, 300);
     }
     prevOpen.current = isTopUpOpen;
@@ -498,6 +518,8 @@ export default function BillingPage() {
     if (isNaN(val) || val < 1) return;
     const res = await startTopup(val, paymentType, {
       cardMethodId: selectedCardId ?? undefined,
+      subscriptionPlanId: pendingPlanPurchase?.planId,
+      subscriptionPeriod: pendingPlanPurchase ? period : undefined,
     });
     if (res?.confirmationUrl) {
       window.open(res.confirmationUrl, "_blank", "noopener,noreferrer");
@@ -519,11 +541,17 @@ export default function BillingPage() {
 
   const handleSubscribe = async (planId: string, cost: number) => {
     if (profile.balance >= cost) {
-      const result = await purchaseSubscription(planId, period);
+      const result = await purchaseSubscription(
+        planId,
+        period,
+        selectedCardId ?? undefined,
+      );
       if (result) refetch();
     } else {
       const needed = cost - profile.balance;
       setTopUpAmount(needed.toString());
+      setPendingPlanPurchase({ planId, cost });
+      setPaymentType("bank_card");
       setIsTopUpOpen(true);
     }
   };
@@ -655,6 +683,13 @@ export default function BillingPage() {
                       selectedCardId={selectedCardId}
                       onCardSelect={setSelectedCardId}
                     />
+
+                    {pendingPlanPurchase && (
+                      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+                        После пополнения недостающей суммы тариф купится автоматически.
+                        Для автосписаний выберите сохранённую карту или оплатите новой картой.
+                      </div>
+                    )}
 
                     {/* Action buttons */}
                     <div className="space-y-2">
@@ -1180,6 +1215,7 @@ export default function BillingPage() {
               isLoading={cardsLoading}
               onRemove={removeCard}
               onSetDefault={setDefault}
+              onSetAutoCharge={setAutoCharge}
               onLinkCard={handleLinkCard}
             />
           </motion.div>
@@ -1233,8 +1269,13 @@ export default function BillingPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">
-                          {item.title}
+                        <div className="font-semibold text-sm truncate flex items-center gap-2">
+                          <span className="truncate">{item.title}</span>
+                          {item.isTest && (
+                            <Badge variant="secondary" className="text-[10px] font-bold shrink-0">
+                              TEST
+                            </Badge>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {new Date(item.createdAt).toLocaleDateString(

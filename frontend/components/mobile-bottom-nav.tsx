@@ -25,7 +25,8 @@ const navItems = [
 export function MobileBottomNav() {
   const pathname = usePathname();
   const { profile } = useUser();
-  const visibleNavItems = profile?.hideAiMenu
+  const hideAi = profile?.hideAiMenu || profile?.hideAiMenuForAll;
+  const visibleNavItems = hideAi
     ? navItems.filter((item) => item.url !== "/ai")
     : navItems;
 

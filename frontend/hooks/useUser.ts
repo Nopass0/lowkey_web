@@ -31,6 +31,7 @@ const MOCK_PROFILE: UserProfile = {
   balance: 1500,
   referralBalance: 120,
   hideAiMenu: false,
+  hideAiMenuForAll: false,
   subscription: {
     planId: "pro",
     planName: "Рабочий",

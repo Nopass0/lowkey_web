@@ -64,7 +64,8 @@ adminNav.splice(adminNav.length - 1, 0, {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth();
   const { profile } = useUser();
-  const visibleUserNav = profile?.hideAiMenu
+  const hideAi = profile?.hideAiMenu || profile?.hideAiMenuForAll;
+  const visibleUserNav = hideAi
     ? userNav.filter((item) => item.url !== "/ai")
     : userNav;
 

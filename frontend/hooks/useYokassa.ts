@@ -165,5 +165,15 @@ export function usePaymentMethods() {
     );
   }, []);
 
-  return { methods, isLoading, refetch, removeCard, setDefault };
+  const setAutoCharge = useCallback(async (id: string, allowAutoCharge: boolean) => {
+    const updated = await apiClient.patch<PaymentMethod>(
+      `/yokassa/cards/${id}/auto-charge`,
+      { allowAutoCharge },
+    );
+    setMethods((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, allowAutoCharge: updated.allowAutoCharge } : m)),
+    );
+  }, []);
+
+  return { methods, isLoading, refetch, removeCard, setDefault, setAutoCharge };
 }

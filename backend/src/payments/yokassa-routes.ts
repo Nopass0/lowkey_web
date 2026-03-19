@@ -1,6 +1,6 @@
 /**
  * @fileoverview YooKassa payment routes.
- * Handles card/SBP/T-Pay top-up, card binding, unlink, webhook.
+ * Supports top-ups, saved cards, auto-renew wiring, refunds, and webhooks.
  */
 
 import Elysia, { t } from "elysia";
@@ -8,34 +8,197 @@ import { db } from "../db";
 import { authMiddleware } from "../auth/middleware";
 import { config } from "../config";
 import {
+  autoPurchaseSubscription,
+  createAutoPayment,
   createYKPayment,
+  createYKRefund,
   getYKPayment,
+  getYKSettings,
+  isYKTestMode,
   onYKPaymentSuccess,
+  type YKPaymentMethod,
+  type YKPaymentResponse,
   type YKWebhookEvent,
 } from "./yokassa";
 
 const YOKASSA_RETURN_URL = `${config.SITE_URL}/me/billing`;
 
-// ─── User-facing routes (require auth) ────────────────────────────────────
+function getMetadataValue(
+  metadata: unknown,
+  key: string,
+): string | undefined {
+  if (!metadata || typeof metadata !== "object") {
+    return undefined;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+async function savePaymentMethod(userId: string, method: YKPaymentMethod) {
+  const existing = await db.paymentMethod.findUnique({
+    where: { yokassaMethodId: method.id },
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  const hasMethods = await db.paymentMethod.count({ where: { userId } });
+  const expMonth = method.card?.expiry_month
+    ? Number.parseInt(method.card.expiry_month, 10)
+    : null;
+  const expYear = method.card?.expiry_year
+    ? Number.parseInt(method.card.expiry_year, 10)
+    : null;
+
+  return db.paymentMethod.create({
+    data: {
+      userId,
+      yokassaMethodId: method.id,
+      type: method.type,
+      title:
+        method.title ??
+        (method.card
+          ? `${method.card.card_type ?? "Карта"} •••• ${method.card.last4}`
+          : "Банковская карта"),
+      cardLast4: method.card?.last4 ?? null,
+      cardBrand: method.card?.card_type ?? null,
+      cardExpMonth: expMonth,
+      cardExpYear: expYear,
+      isDefault: hasMethods === 0,
+    },
+  });
+}
+
+async function handleCompletedYKPayment(
+  paymentId: string,
+  ykPayment: YKPaymentResponse,
+) {
+  const payment = await db.payment.findUnique({
+    where: { id: paymentId },
+  });
+
+  if (!payment) {
+    return;
+  }
+
+  const purpose = getMetadataValue(payment.metadata, "purpose") ?? "topup";
+
+  if (purpose === "topup" || purpose === "subscription_topup") {
+    await onYKPaymentSuccess(payment.id);
+
+    if (ykPayment.payment_method?.saved) {
+      const saved = await savePaymentMethod(payment.userId, ykPayment.payment_method);
+      const shouldAutoRenew = getMetadataValue(payment.metadata, "subscriptionPlanId");
+      if (shouldAutoRenew) {
+        await db.subscription.updateMany({
+          where: { userId: payment.userId },
+          data: {
+            autoRenewal: true,
+            autoRenewPaymentMethodId: saved.id,
+            billingPeriod:
+              getMetadataValue(payment.metadata, "subscriptionPeriod") ?? "monthly",
+          },
+        });
+      }
+    }
+    return;
+  }
+
+  if (purpose === "link_card") {
+    if (ykPayment.payment_method?.saved) {
+      await savePaymentMethod(payment.userId, ykPayment.payment_method);
+    }
+
+    await db.$transaction(async (tx) => {
+      const current = await tx.payment.findUnique({
+        where: { id: payment.id },
+        select: { creditedAt: true },
+      });
+      if (current?.creditedAt) {
+        return;
+      }
+
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "success",
+          creditedAt: new Date(),
+        },
+      });
+
+      await tx.user.update({
+        where: { id: payment.userId },
+        data: { balance: { increment: payment.amount } },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: payment.userId,
+          type: "topup",
+          amount: payment.amount,
+          title: `${payment.isTest ? "[TEST] " : ""}Возврат за привязку карты`,
+          isTest: payment.isTest,
+          paymentId: payment.id,
+        },
+      });
+    });
+    return;
+  }
+
+  if (purpose === "promo_subscribe") {
+    const planSlug = getMetadataValue(payment.metadata, "planSlug");
+    const period = getMetadataValue(payment.metadata, "period") ?? "monthly";
+    if (planSlug) {
+      const saved = ykPayment.payment_method?.saved
+        ? await savePaymentMethod(payment.userId, ykPayment.payment_method)
+        : null;
+
+      await autoPurchaseSubscription(
+        payment.userId,
+        planSlug,
+        period,
+        saved?.id ?? null,
+      );
+
+      await db.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "success",
+          creditedAt: new Date(),
+        },
+      });
+    }
+    return;
+  }
+
+  if (purpose === "autorenew") {
+    const planSlug = getMetadataValue(payment.metadata, "subscriptionPlanId");
+    const period = getMetadataValue(payment.metadata, "subscriptionPeriod") ?? "monthly";
+    const paymentMethodId =
+      getMetadataValue(payment.metadata, "autoRenewPaymentMethodId") ?? null;
+
+    if (planSlug) {
+      await autoPurchaseSubscription(payment.userId, planSlug, period, paymentMethodId);
+      await db.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: "success",
+          creditedAt: new Date(),
+        },
+      });
+    }
+  }
+}
 
 export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
   .use(authMiddleware)
-
-  // ─── GET /yokassa/cards ─────────────────────────────────────
   .get("/cards", async ({ user }) => {
-    const methods = await db.paymentMethod.findMany({
+    return db.paymentMethod.findMany({
       where: { userId: user.userId },
       orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
     });
-    return methods;
   })
-
-  // ─── POST /yokassa/topup ────────────────────────────────────
-  /**
-   * Create a payment for balance top-up.
-   * paymentType: "bank_card" | "sbp" | "tinkoff_bank"
-   * If cardMethodId is provided, charge a saved card directly.
-   */
   .post(
     "/topup",
     async ({ user, body, set }) => {
@@ -49,93 +212,106 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
 
       if (amount < 10) {
         set.status = 400;
-        return { message: "Minimum amount is 10 RUB" };
+        return { message: "Минимальная сумма пополнения 10 ₽" };
       }
 
-      const idempotencyKey = crypto.randomUUID();
+      const isTest = await isYKTestMode();
       const metadata: Record<string, string> = {
         userId: user.userId,
-        purpose: "topup",
+        purpose: subscriptionPlanId ? "subscription_topup" : "topup",
       };
-      if (subscriptionPlanId) metadata.subscriptionPlanId = subscriptionPlanId;
-      if (subscriptionPeriod) metadata.subscriptionPeriod = subscriptionPeriod;
 
-      let paymentData;
+      if (subscriptionPlanId) {
+        metadata.subscriptionPlanId = subscriptionPlanId;
+        metadata.subscriptionPeriod = subscriptionPeriod ?? "monthly";
+      }
+
+      let paymentMethodDbId: string | undefined;
+      let ykPayment;
+
       try {
         if (cardMethodId) {
-          // Charge a saved card
-          const dbMethod = await db.paymentMethod.findFirst({
+          const method = await db.paymentMethod.findFirst({
             where: { id: cardMethodId, userId: user.userId },
           });
-          if (!dbMethod) {
+
+          if (!method) {
             set.status = 404;
-            return { message: "Payment method not found" };
+            return { message: "Карта не найдена" };
           }
-          paymentData = await createYKPayment(
-            {
-              amount: { value: amount.toFixed(2), currency: "RUB" },
-              payment_method_id: dbMethod.yokassaMethodId,
-              capture: true,
-              description: `Пополнение баланса lowkey VPN`,
-              metadata,
-            },
-            idempotencyKey,
+
+          paymentMethodDbId = method.id;
+          metadata.autoRenewPaymentMethodId = method.id;
+
+          ykPayment = await createAutoPayment(
+            method.yokassaMethodId,
+            amount,
+            `${isTest ? "[TEST] " : ""}Пополнение баланса lowkey`,
+            metadata,
           );
         } else {
-          paymentData = await createYKPayment(
+          ykPayment = await createYKPayment(
             {
               amount: { value: amount.toFixed(2), currency: "RUB" },
-              payment_method_type:
-                paymentType === "bank_card"
-                  ? "bank_card"
-                  : paymentType === "sbp"
-                    ? "sbp"
-                    : "tinkoff_bank",
+              payment_method_type: paymentType,
               capture: true,
-              save_payment_method: paymentType === "bank_card",
-              description: `Пополнение баланса lowkey VPN`,
+              save_payment_method:
+                paymentType === "bank_card" && Boolean(subscriptionPlanId),
+              description: `${isTest ? "[TEST] " : ""}Пополнение баланса lowkey`,
               confirmation: {
                 type: "redirect",
                 return_url: YOKASSA_RETURN_URL,
               },
               metadata,
             },
-            idempotencyKey,
+            crypto.randomUUID(),
           );
         }
-      } catch (err) {
-        console.error("[YK] topup create error:", err);
+      } catch (error) {
+        console.error("[YK] topup create error:", error);
         set.status = 500;
-        return { message: "Ошибка создания платежа" };
+        return {
+          message:
+            error instanceof Error ? error.message : "Ошибка создания платежа",
+        };
       }
-
-      const expiresAt = new Date(
-        paymentData.expires_at
-          ? new Date(paymentData.expires_at).getTime()
-          : Date.now() + 60 * 60 * 1000,
-      );
 
       const payment = await db.payment.create({
         data: {
           userId: user.userId,
-          yokassaPaymentId: paymentData.id,
+          yokassaPaymentId: ykPayment.id,
           amount,
-          status: "pending",
+          status:
+            ykPayment.status === "succeeded"
+              ? "success"
+              : ykPayment.status === "canceled"
+                ? "failed"
+                : "pending",
           provider: "yokassa",
           paymentType,
-          confirmationUrl:
-            paymentData.confirmation?.confirmation_url ?? null,
-          description: `Пополнение баланса на ${amount} ₽`,
-          metadata,
-          expiresAt,
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          description: `${isTest ? "[TEST] " : ""}Пополнение на ${amount} ₽`,
+          metadata: paymentMethodDbId
+            ? { ...metadata, autoRenewPaymentMethodId: paymentMethodDbId }
+            : metadata,
+          isTest,
+          expiresAt: new Date(
+            ykPayment.expires_at
+              ? new Date(ykPayment.expires_at).getTime()
+              : Date.now() + 60 * 60 * 1000,
+          ),
         },
       });
 
+      if (ykPayment.status === "succeeded") {
+        await handleCompletedYKPayment(payment.id, ykPayment);
+      }
+
       return {
         paymentId: payment.id,
-        yokassaPaymentId: paymentData.id,
-        status: paymentData.status,
-        confirmationUrl: paymentData.confirmation?.confirmation_url ?? null,
+        yokassaPaymentId: ykPayment.id,
+        status: ykPayment.status,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
         amount,
       };
     },
@@ -155,193 +331,219 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
       }),
     },
   )
-
-  // ─── POST /yokassa/link-card ─────────────────────────────────
-  /**
-   * Create a 1 RUB payment to bind a card (will be refunded automatically by YooKassa).
-   * Actually we just create a small payment with save_payment_method=true.
-   */
   .post("/link-card", async ({ user, set }) => {
-    const idempotencyKey = crypto.randomUUID();
     try {
-      const paymentData = await createYKPayment(
+      const isTest = await isYKTestMode();
+      const ykPayment = await createYKPayment(
         {
           amount: { value: "1.00", currency: "RUB" },
           payment_method_type: "bank_card",
           capture: true,
           save_payment_method: true,
-          description: "Привязка карты lowkey VPN",
+          description: `${isTest ? "[TEST] " : ""}Привязка карты lowkey`,
           confirmation: {
             type: "redirect",
             return_url: `${YOKASSA_RETURN_URL}?linked=1`,
           },
           metadata: { userId: user.userId, purpose: "link_card" },
         },
-        idempotencyKey,
+        crypto.randomUUID(),
       );
 
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
       const payment = await db.payment.create({
         data: {
           userId: user.userId,
-          yokassaPaymentId: paymentData.id,
+          yokassaPaymentId: ykPayment.id,
           amount: 1,
           status: "pending",
           provider: "yokassa",
           paymentType: "link_card",
-          confirmationUrl: paymentData.confirmation?.confirmation_url ?? null,
-          description: "Привязка карты",
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          description: `${isTest ? "[TEST] " : ""}Привязка карты`,
           metadata: { userId: user.userId, purpose: "link_card" },
-          expiresAt,
+          isTest,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         },
       });
 
       return {
         paymentId: payment.id,
-        yokassaPaymentId: paymentData.id,
-        confirmationUrl: paymentData.confirmation?.confirmation_url,
+        yokassaPaymentId: ykPayment.id,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
       };
-    } catch (err) {
-      console.error("[YK] link-card error:", err);
+    } catch (error) {
+      console.error("[YK] link-card error:", error);
       set.status = 500;
-      return { message: "Ошибка привязки карты" };
+      return {
+        message:
+          error instanceof Error ? error.message : "Ошибка привязки карты",
+      };
     }
   })
-
-  // ─── DELETE /yokassa/cards/:id ───────────────────────────────
-  .delete(
-    "/cards/:id",
-    async ({ user, params, set }) => {
-      const method = await db.paymentMethod.findFirst({
-        where: { id: params.id, userId: user.userId },
-      });
-      if (!method) {
-        set.status = 404;
-        return { message: "Карта не найдена" };
-      }
-      await db.paymentMethod.delete({ where: { id: params.id } });
-      return { success: true };
-    },
-    { params: t.Object({ id: t.String() }) },
-  )
-
-  // ─── PATCH /yokassa/cards/:id/default ───────────────────────
   .patch(
     "/cards/:id/default",
     async ({ user, params, set }) => {
       const method = await db.paymentMethod.findFirst({
         where: { id: params.id, userId: user.userId },
       });
+
       if (!method) {
         set.status = 404;
         return { message: "Карта не найдена" };
       }
-      // Unset all, then set this one
+
       await db.paymentMethod.updateMany({
         where: { userId: user.userId },
         data: { isDefault: false },
       });
+
       await db.paymentMethod.update({
         where: { id: params.id },
         data: { isDefault: true },
       });
+
+      await db.subscription.updateMany({
+        where: { userId: user.userId, autoRenewal: true },
+        data: { autoRenewPaymentMethodId: params.id },
+      });
+
       return { success: true };
     },
     { params: t.Object({ id: t.String() }) },
   )
+  .patch(
+    "/cards/:id/auto-charge",
+    async ({ user, params, body, set }) => {
+      const method = await db.paymentMethod.findFirst({
+        where: { id: params.id, userId: user.userId },
+      });
+      if (!method) {
+        set.status = 404;
+        return { message: "Карта не найдена" };
+      }
 
-  // ─── GET /yokassa/payments/:id/status ───────────────────────
+      const updated = await db.paymentMethod.update({
+        where: { id: params.id },
+        data: { allowAutoCharge: body.allowAutoCharge },
+      });
+
+      if (!body.allowAutoCharge) {
+        await db.subscription.updateMany({
+          where: { userId: user.userId, autoRenewPaymentMethodId: params.id },
+          data: { autoRenewal: false, autoRenewPaymentMethodId: null },
+        });
+      }
+
+      return updated;
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ allowAutoCharge: t.Boolean() }),
+    },
+  )
+  .delete(
+    "/cards/:id",
+    async ({ user, params, set }) => {
+      const method = await db.paymentMethod.findFirst({
+        where: { id: params.id, userId: user.userId },
+      });
+
+      if (!method) {
+        set.status = 404;
+        return { message: "Карта не найдена" };
+      }
+
+      await db.subscription.updateMany({
+        where: { userId: user.userId, autoRenewPaymentMethodId: params.id },
+        data: { autoRenewal: false, autoRenewPaymentMethodId: null },
+      });
+
+      await db.paymentMethod.delete({ where: { id: params.id } });
+      return { success: true };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
   .get(
     "/payments/:id/status",
     async ({ user, params, set }) => {
       const payment = await db.payment.findFirst({
         where: { id: params.id, userId: user.userId },
       });
+
       if (!payment) {
         set.status = 404;
         return { message: "Платёж не найден" };
       }
 
-      if (payment.status !== "pending") {
+      if (payment.status !== "pending" || !payment.yokassaPaymentId) {
         return {
           paymentId: payment.id,
           status: payment.status,
           amount: payment.amount,
+          isTest: payment.isTest,
         };
-      }
-
-      if (!payment.yokassaPaymentId) {
-        return { paymentId: payment.id, status: payment.status, amount: payment.amount };
       }
 
       try {
         const ykPayment = await getYKPayment(payment.yokassaPaymentId);
 
         if (ykPayment.status === "succeeded") {
-          await db.payment.update({
-            where: { id: payment.id },
-            data: { status: "success" },
-          });
+          await handleCompletedYKPayment(payment.id, ykPayment);
+          return {
+            paymentId: payment.id,
+            status: "success",
+            amount: payment.amount,
+            isTest: payment.isTest,
+          };
+        }
 
-          const metadata = (payment.metadata as Record<string, string>) ?? {};
-          if (metadata.purpose === "topup" || metadata.purpose === undefined) {
-            await onYKPaymentSuccess(user.userId, payment.amount, metadata);
-          }
-
-          return { paymentId: payment.id, status: "success", amount: payment.amount };
-        } else if (ykPayment.status === "canceled") {
+        if (ykPayment.status === "canceled") {
           await db.payment.update({
             where: { id: payment.id },
             data: { status: "failed" },
           });
-          return { paymentId: payment.id, status: "failed", amount: payment.amount };
+          return {
+            paymentId: payment.id,
+            status: "failed",
+            amount: payment.amount,
+            isTest: payment.isTest,
+          };
         }
-      } catch (err) {
-        console.error("[YK] status check error:", err);
+      } catch (error) {
+        console.error("[YK] status check error:", error);
       }
 
-      return { paymentId: payment.id, status: "pending", amount: payment.amount };
+      return {
+        paymentId: payment.id,
+        status: "pending",
+        amount: payment.amount,
+        isTest: payment.isTest,
+      };
     },
     { params: t.Object({ id: t.String() }) },
   )
-
-  // ─── POST /yokassa/subscribe-promo ──────────────────────────
-  /**
-   * Subscribe with promo price — create payment for promo amount with card binding.
-   */
   .post(
     "/subscribe-promo",
     async ({ user, body, set }) => {
-      const { planSlug, period } = body;
-
       const plan = await db.subscriptionPlan.findUnique({
-        where: { slug: planSlug, isActive: true },
-        include: { prices: true },
+        where: { slug: body.planSlug },
       });
-      if (!plan) {
-        set.status = 404;
-        return { message: "Тариф не найден" };
-      }
-      if (!plan.promoActive || plan.promoPrice === null) {
+
+      if (!plan || !plan.isActive || !plan.promoActive || plan.promoPrice == null) {
         set.status = 400;
-        return { message: "Акция на этот тариф не активна" };
-      }
-      if (plan.promoMaxUses && plan.promoUsed >= plan.promoMaxUses) {
-        set.status = 400;
-        return { message: "Акция закончилась" };
+        return { message: "Промо для тарифа недоступно" };
       }
 
-      const promoAmount = plan.promoPrice;
-      const idempotencyKey = crypto.randomUUID();
+      const isTest = await isYKTestMode();
 
       try {
-        const paymentData = await createYKPayment(
+        const ykPayment = await createYKPayment(
           {
-            amount: { value: promoAmount.toFixed(2), currency: "RUB" },
+            amount: { value: plan.promoPrice.toFixed(2), currency: "RUB" },
             payment_method_type: "bank_card",
             capture: true,
             save_payment_method: true,
-            description: `${plan.promoLabel ?? "Акция"}: тариф "${plan.name}"`,
+            description: `${isTest ? "[TEST] " : ""}${plan.promoLabel ?? "Промо"}: ${plan.name}`,
             confirmation: {
               type: "redirect",
               return_url: `${YOKASSA_RETURN_URL}?subscribed=1`,
@@ -349,45 +551,48 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
             metadata: {
               userId: user.userId,
               purpose: "promo_subscribe",
-              planSlug,
-              period,
+              planSlug: body.planSlug,
+              period: body.period,
             },
           },
-          idempotencyKey,
+          crypto.randomUUID(),
         );
 
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
         const payment = await db.payment.create({
           data: {
             userId: user.userId,
-            yokassaPaymentId: paymentData.id,
-            amount: promoAmount,
+            yokassaPaymentId: ykPayment.id,
+            amount: plan.promoPrice,
             status: "pending",
             provider: "yokassa",
             paymentType: "promo_subscribe",
-            confirmationUrl: paymentData.confirmation?.confirmation_url ?? null,
-            description: `Акционная подписка "${plan.name}"`,
+            confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+            description: `${isTest ? "[TEST] " : ""}Промо-подписка "${plan.name}"`,
             metadata: {
               userId: user.userId,
               purpose: "promo_subscribe",
-              planSlug,
-              period,
+              planSlug: body.planSlug,
+              period: body.period,
             },
-            expiresAt,
+            isTest,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           },
         });
 
         return {
           paymentId: payment.id,
-          yokassaPaymentId: paymentData.id,
-          confirmationUrl: paymentData.confirmation?.confirmation_url,
-          promoAmount,
-          promoLabel: plan.promoLabel,
+          yokassaPaymentId: ykPayment.id,
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          promoAmount: plan.promoPrice,
+          promoLabel: plan.promoLabel ?? null,
         };
-      } catch (err) {
-        console.error("[YK] subscribe-promo error:", err);
+      } catch (error) {
+        console.error("[YK] subscribe-promo error:", error);
         set.status = 500;
-        return { message: "Ошибка создания акционного платежа" };
+        return {
+          message:
+            error instanceof Error ? error.message : "Ошибка создания платежа",
+        };
       }
     },
     {
@@ -396,220 +601,155 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
         period: t.String(),
       }),
     },
+  )
+  .post(
+    "/refunds/:id",
+    async ({ user, params, set }) => {
+      const payment = await db.payment.findFirst({
+        where: {
+          id: params.id,
+          userId: user.userId,
+          status: "success",
+          provider: "yokassa",
+        },
+      });
+
+      if (!payment) {
+        set.status = 404;
+        return { message: "Платёж не найден" };
+      }
+
+      if (!payment.yokassaPaymentId || payment.refundedAt) {
+        set.status = 400;
+        return { message: "Возврат для платежа недоступен" };
+      }
+
+      const purpose = getMetadataValue(payment.metadata, "purpose") ?? "topup";
+      if (purpose !== "topup") {
+        set.status = 400;
+        return { message: "Возврат доступен только для обычного пополнения баланса" };
+      }
+
+      if (Date.now() - payment.createdAt.getTime() > 2 * 60 * 60 * 1000) {
+        set.status = 400;
+        return { message: "С момента пополнения прошло более 2 часов" };
+      }
+
+      const subscriptionSpend = await db.transaction.findFirst({
+        where: {
+          userId: user.userId,
+          type: "subscription",
+          createdAt: { gte: payment.createdAt },
+        },
+      });
+
+      if (subscriptionSpend) {
+        set.status = 400;
+        return { message: "После пополнения уже была оплачена подписка с баланса" };
+      }
+
+      const currentUser = await db.user.findUnique({
+        where: { id: user.userId },
+        select: { balance: true },
+      });
+
+      if (!currentUser || currentUser.balance < payment.amount) {
+        set.status = 400;
+        return { message: "Возврат невозможен: средства уже израсходованы" };
+      }
+
+      const refundAmount = Math.round(payment.amount * 0.7 * 100) / 100;
+
+      try {
+        await createYKRefund(
+          payment.yokassaPaymentId,
+          refundAmount,
+          `Возврат пополнения lowkey (${refundAmount} ₽ после комиссии 30%)`,
+        );
+
+        await db.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: user.userId },
+            data: { balance: { decrement: payment.amount } },
+          });
+
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              refundedAt: new Date(),
+              refundAmount,
+              refundReason: "Возврат с удержанием комиссии 30%",
+            },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: user.userId,
+              type: "withdrawal",
+              amount: -payment.amount,
+              title: `${payment.isTest ? "[TEST] " : ""}Возврат пополнения (${refundAmount} ₽ на карту, комиссия 30%)`,
+              isTest: payment.isTest,
+              paymentId: payment.id,
+            },
+          });
+        });
+
+        return { success: true, refundAmount };
+      } catch (error) {
+        console.error("[YK] refund error:", error);
+        set.status = 500;
+        return {
+          message:
+            error instanceof Error ? error.message : "Ошибка возврата средств",
+        };
+      }
+    },
+    { params: t.Object({ id: t.String() }) },
   );
 
-// ─── Webhook (no auth) ─────────────────────────────────────────────────────
-
-export const yokassaWebhookRoute = new Elysia()
-  .post("/yokassa-notify", async ({ body, set }) => {
+export const yokassaWebhookRoute = new Elysia().post(
+  "/yokassa-notify",
+  async ({ body, set }) => {
     try {
       const event = body as YKWebhookEvent;
-      console.log("[YK webhook] event:", event?.type, event?.object?.id);
+      const ykId = event?.object?.id;
 
-      if (!event?.type || !event?.object) {
+      if (!event?.type || !ykId) {
         set.status = 400;
         return { ok: false };
       }
 
-      const ykPayment = event.object;
-      const ykId = ykPayment.id;
-
-      const dbPayment = await db.payment.findFirst({
+      const payment = await db.payment.findFirst({
         where: { yokassaPaymentId: ykId },
       });
 
-      if (!dbPayment) {
-        console.warn("[YK webhook] Payment not found in DB:", ykId);
-        return { ok: true }; // Return 200 so YK stops retrying
+      if (!payment) {
+        return { ok: true };
       }
 
-      const metadata =
-        (dbPayment.metadata as Record<string, string> | null) ?? {};
-      const userId = dbPayment.userId;
+      if (event.type === "payment.succeeded" && event.object.status === "succeeded") {
+        await handleCompletedYKPayment(payment.id, event.object);
+      }
 
-      if (
-        event.type === "payment.succeeded" &&
-        ykPayment.status === "succeeded"
-      ) {
-        if (dbPayment.status !== "success") {
-          await db.payment.update({
-            where: { id: dbPayment.id },
-            data: { status: "success" },
-          });
-
-          if (metadata.purpose === "topup") {
-            await onYKPaymentSuccess(userId, dbPayment.amount, metadata);
-          } else if (metadata.purpose === "promo_subscribe") {
-            // Promo: activate subscription and save card
-            await handlePromoSubscribeSuccess(userId, dbPayment, ykPayment, metadata);
-          } else if (metadata.purpose === "link_card") {
-            // Card linking: save the payment method, credit 1 rub to balance
-            await handleCardLinkSuccess(userId, ykPayment);
-            // Credit 1 rub so net cost is 0 for user
-            await db.user.update({
-              where: { id: userId },
-              data: { balance: { increment: 1 } },
-            });
-            await db.transaction.create({
-              data: {
-                userId,
-                type: "topup",
-                amount: 1,
-                title: "Возврат за привязку карты",
-              },
-            });
-          }
-        }
-      } else if (
-        event.type === "payment.waiting_for_capture" &&
-        ykPayment.status === "waiting_for_capture"
-      ) {
-        // For most cases we use capture:true, but handle just in case
+      if (event.type === "payment.canceled" && event.object.status === "canceled") {
         await db.payment.update({
-          where: { id: dbPayment.id },
-          data: { status: "pending" },
-        });
-      } else if (
-        event.type === "payment.canceled" &&
-        ykPayment.status === "canceled"
-      ) {
-        await db.payment.update({
-          where: { id: dbPayment.id },
+          where: { id: payment.id },
           data: { status: "failed" },
         });
-      } else if (event.type === "payment_method.active") {
-        // Saved card is ready — store it
-        const pm = ykPayment.payment_method;
-        if (pm?.saved) {
-          await savePaymentMethod(userId, pm);
-        }
+      }
+
+      if (event.type === "refund.succeeded") {
+        await db.payment.updateMany({
+          where: { yokassaPaymentId: ykId },
+          data: { refundedAt: new Date() },
+        });
       }
 
       return { ok: true };
-    } catch (err) {
-      console.error("[YK webhook] error:", err);
+    } catch (error) {
+      console.error("[YK webhook] error:", error);
       set.status = 500;
       return { ok: false };
     }
-  });
-
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-async function handleCardLinkSuccess(
-  userId: string,
-  ykPayment: import("./yokassa").YKPaymentResponse,
-) {
-  const pm = ykPayment.payment_method;
-  if (pm?.saved) {
-    await savePaymentMethod(userId, pm);
-  }
-}
-
-async function savePaymentMethod(
-  userId: string,
-  pm: import("./yokassa").YKPaymentMethod,
-) {
-  const existing = await db.paymentMethod.findUnique({
-    where: { yokassaMethodId: pm.id },
-  });
-  if (existing) return existing;
-
-  const hasDefault = await db.paymentMethod.count({
-    where: { userId },
-  });
-
-  const cardLast4 = pm.card?.last4 ?? null;
-  const cardBrand = pm.card?.card_type ?? null;
-  const expMonth = pm.card?.expiry_month
-    ? parseInt(pm.card.expiry_month, 10)
-    : null;
-  const expYear = pm.card?.expiry_year
-    ? parseInt(pm.card.expiry_year, 10)
-    : null;
-
-  return db.paymentMethod.create({
-    data: {
-      userId,
-      yokassaMethodId: pm.id,
-      type: pm.type,
-      title:
-        pm.title ??
-        (pm.card
-          ? `${pm.card.card_type ?? "Карта"} •••• ${pm.card.last4}`
-          : "Банковская карта"),
-      cardLast4,
-      cardBrand,
-      cardExpMonth: expMonth,
-      cardExpYear: expYear,
-      isDefault: hasDefault === 0,
-    },
-  });
-}
-
-const PERIOD_DAYS: Record<string, number> = {
-  monthly: 30,
-  "3months": 90,
-  "6months": 180,
-  yearly: 365,
-};
-
-async function handlePromoSubscribeSuccess(
-  userId: string,
-  dbPayment: { id: string; amount: number },
-  ykPayment: import("./yokassa").YKPaymentResponse,
-  metadata: Record<string, string>,
-) {
-  const { planSlug, period } = metadata;
-  if (!planSlug || !period) return;
-
-  const plan = await db.subscriptionPlan.findUnique({
-    where: { slug: planSlug, isActive: true },
-  });
-  if (!plan) return;
-
-  const days = PERIOD_DAYS[period];
-  if (!days) return;
-
-  const now = new Date();
-  const activeUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-
-  await db.$transaction(async (tx) => {
-    await tx.subscription.upsert({
-      where: { userId },
-      update: {
-        planId: plan.slug,
-        planName: plan.name,
-        activeUntil,
-        autoRenewal: true,
-      },
-      create: {
-        userId,
-        planId: plan.slug,
-        planName: plan.name,
-        activeUntil,
-        autoRenewal: true,
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
-        userId,
-        type: "subscription",
-        amount: -dbPayment.amount,
-        title: `Акционная подписка "${plan.name}"`,
-      },
-    });
-
-    // Increment promo usage
-    await tx.subscriptionPlan.update({
-      where: { id: plan.id },
-      data: { promoUsed: { increment: 1 } },
-    });
-  });
-
-  // Save card if provided
-  const pm = ykPayment.payment_method;
-  if (pm?.saved) {
-    await savePaymentMethod(userId, pm);
-  }
-}
+  },
+);

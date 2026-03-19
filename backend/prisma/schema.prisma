@@ -119,6 +119,8 @@ model Subscription {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   autoRenewal Boolean  @default(true)
+  billingPeriod String @default("monthly")
+  autoRenewPaymentMethodId String?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
@@ -130,6 +132,8 @@ model Transaction {
   type      String
   amount    Float
   title     String
+  isTest    Boolean  @default(false)
+  paymentId String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -151,6 +155,11 @@ model Payment {
   confirmationUrl   String?
   description       String?
   metadata          Json?
+  isTest            Boolean  @default(false)
+  creditedAt        DateTime?
+  refundedAt        DateTime?
+  refundAmount      Float?
+  refundReason      String?
   createdAt         DateTime @default(now())
   expiresAt         DateTime @default(dbgenerated("NOW() + INTERVAL '30 minutes'"))
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -170,6 +179,7 @@ model PaymentMethod {
   cardExpMonth       Int?
   cardExpYear        Int?
   isDefault          Boolean  @default(false)
+  allowAutoCharge    Boolean  @default(true)
   createdAt          DateTime @default(now())
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -180,6 +190,7 @@ model PaymentMethod {
 model YokassaSettings {
   id         String   @id @default("global")
   mode       String   @default("test")
+  testSubscriptionEnabled Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -341,6 +352,7 @@ model AiSettings {
   systemPrompt          String?
   maxContextMessages    Int      @default(14)
   enableReasoning       Boolean  @default(true)
+  hideAiMenuForAll      Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

@@ -15,6 +15,7 @@ import { authRoutes } from "./auth/routes";
 import { userRoutes } from "./user/routes";
 import { paymentRoutes } from "./payments/routes";
 import { yokassaPaymentRoutes, yokassaWebhookRoute } from "./payments/yokassa-routes";
+import { processAutoRenewals } from "./payments/yokassa";
 import { subscriptionRoutes } from "./subscriptions/routes";
 import { deviceRoutes } from "./devices/routes";
 import { promoRoutes } from "./promo/routes";
@@ -88,6 +89,25 @@ function startMailingWorker(): void {
   }, INTERVAL_MS);
 
   console.log("[MailingWorker] Started.");
+}
+
+function startSubscriptionRenewalWorker(): void {
+  const INTERVAL_MS = 60 * 1000;
+
+  const tick = async () => {
+    try {
+      await processAutoRenewals();
+    } catch (error) {
+      console.error("[RenewalWorker] Error:", error);
+    }
+  };
+
+  void tick();
+  setInterval(() => {
+    void tick();
+  }, INTERVAL_MS);
+
+  console.log("[RenewalWorker] Started.");
 }
 
 /**
@@ -206,5 +226,6 @@ console.log(`📚 Swagger docs at http://localhost:${config.PORT}/swagger`);
 // Start background VPN-server offline detector
 startServerMonitor();
 startMailingWorker();
+startSubscriptionRenewalWorker();
 
 export type App = typeof app;

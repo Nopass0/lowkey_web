@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiClient } from "@/api/client";
-import { SubscriptionPlan } from "@/api/types";
+import { AdminYokassaSettings, SubscriptionPlan } from "@/api/types";
 import { Loader } from "@/components/ui/loader";
 import { toast } from "sonner";
 
@@ -36,6 +36,10 @@ export default function TariffsAdminPage() {
   const [editingPlan, setEditingPlan] = useState<Partial<AdminPlan> | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [ykMode, setYkMode] = useState<"test" | "production">("test");
+  const [testSubscriptionEnabled, setTestSubscriptionEnabled] = useState(false);
+  const [hideAiMenuForAll, setHideAiMenuForAll] = useState(false);
+  const [prodCredsReady, setProdCredsReady] = useState(false);
+  const [testCredsReady, setTestCredsReady] = useState(false);
   const [ykLoading, setYkLoading] = useState(false);
   const [ykSaving, setYkSaving] = useState(false);
 
@@ -66,8 +70,12 @@ export default function TariffsAdminPage() {
   const fetchYKSettings = useCallback(async () => {
     setYkLoading(true);
     try {
-      const res = await apiClient.get<{ mode: "test" | "production" }>("/admin/yokassa/settings");
+      const res = await apiClient.get<AdminYokassaSettings>("/admin/yokassa/settings");
       setYkMode(res.mode);
+      setTestSubscriptionEnabled(res.testSubscriptionEnabled);
+      setHideAiMenuForAll(res.hideAiMenuForAll);
+      setProdCredsReady(res.productionCredentialsConfigured);
+      setTestCredsReady(res.testCredentialsConfigured);
     } catch {
       // ignore
     } finally {
@@ -82,6 +90,10 @@ export default function TariffsAdminPage() {
 
   const handleToggleYKMode = async () => {
     const newMode = ykMode === "test" ? "production" : "test";
+    if (newMode === "production" && !prodCredsReady) {
+      toast.error("Боевые ключи YooKassa не настроены на сервере");
+      return;
+    }
     setYkSaving(true);
     try {
       await apiClient.patch("/admin/yokassa/settings", { mode: newMode });
@@ -89,6 +101,38 @@ export default function TariffsAdminPage() {
       toast.success(`ЮKassa переключена в режим: ${newMode === "test" ? "Тестовый" : "Боевой"}`);
     } catch {
       toast.error("Ошибка при смене режима ЮKassa");
+    } finally {
+      setYkSaving(false);
+    }
+  };
+
+  const handleToggleTestSubscription = async () => {
+    setYkSaving(true);
+    try {
+      const next = !testSubscriptionEnabled;
+      await apiClient.patch("/admin/yokassa/settings", {
+        testSubscriptionEnabled: next,
+      });
+      setTestSubscriptionEnabled(next);
+      toast.success(next ? "Тестовая подписка включена" : "Тестовая подписка отключена");
+    } catch {
+      toast.error("Не удалось обновить тестовую подписку");
+    } finally {
+      setYkSaving(false);
+    }
+  };
+
+  const handleToggleGlobalAiMenu = async () => {
+    setYkSaving(true);
+    try {
+      const next = !hideAiMenuForAll;
+      await apiClient.patch("/admin/yokassa/settings", {
+        hideAiMenuForAll: next,
+      });
+      setHideAiMenuForAll(next);
+      toast.success(next ? "AI скрыт у всех пользователей" : "AI снова показывается в меню");
+    } catch {
+      toast.error("Не удалось обновить глобальную настройку AI");
     } finally {
       setYkSaving(false);
     }
@@ -200,6 +244,50 @@ export default function TariffsAdminPage() {
           )}
           <p className="text-xs text-muted-foreground mt-3">
             {ykMode === "test" ? "Используются тестовые данные (YOKASSA_TEST_SHOP_ID / YOKASSA_TEST_SECRET). Реальных списаний нет." : "⚠️ Используется боевой магазин (YOKASSA_SHOP_ID / YOKASSA_SECRET). Реальные платежи!"}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Глобальные переключатели</CardTitle>
+          <CardDescription>Настройки тестовых списаний и общего меню ЛК.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">Тестовая подписка 10 ₽ / 2 мин</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Включает отдельный тестовый тариф для проверки автосписаний.
+                </div>
+              </div>
+              <Switch
+                checked={testSubscriptionEnabled}
+                onCheckedChange={handleToggleTestSubscription}
+                disabled={ykSaving}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">Скрыть AI у всех</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Убирает AI-вкладку из меню ЛК для всех пользователей.
+                </div>
+              </div>
+              <Switch
+                checked={hideAiMenuForAll}
+                onCheckedChange={handleToggleGlobalAiMenu}
+                disabled={ykSaving}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Ключи YooKassa: test {testCredsReady ? "настроены" : "не настроены"}, production {prodCredsReady ? "настроены" : "не настроены"}.
           </p>
         </CardContent>
       </Card>

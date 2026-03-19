@@ -1,12 +1,11 @@
 /**
- * @fileoverview YooKassa payment gateway client.
- * Supports card payments, SBP, T-Pay, card binding, and auto-renewing subscriptions.
+ * @fileoverview YooKassa gateway helpers.
+ * Centralizes credentials, payment/refund calls, test-mode flags, and
+ * post-payment actions such as balance crediting and auto-purchase.
  */
 
 import { config } from "../config";
 import { db } from "../db";
-
-// ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface YKPaymentAmount {
   value: string;
@@ -69,6 +68,15 @@ export interface YKPaymentResponse {
   paid: boolean;
 }
 
+export interface YKRefundResponse {
+  id: string;
+  status: "pending" | "succeeded" | "canceled";
+  amount: YKPaymentAmount;
+  payment_id: string;
+  created_at: string;
+  description?: string;
+}
+
 export interface YKWebhookEvent {
   type:
     | "payment.succeeded"
@@ -80,35 +88,59 @@ export interface YKWebhookEvent {
   object: YKPaymentResponse;
 }
 
-// ─── Client ────────────────────────────────────────────────────────────────
+type YKMode = "test" | "production";
 
-/**
- * Get current YooKassa credentials based on mode stored in DB.
- */
+const PERIOD_MS: Record<string, number> = {
+  monthly: 30 * 24 * 60 * 60 * 1000,
+  "3months": 90 * 24 * 60 * 60 * 1000,
+  "6months": 180 * 24 * 60 * 60 * 1000,
+  yearly: 365 * 24 * 60 * 60 * 1000,
+  test_2m: 2 * 60 * 1000,
+};
+
+export async function getYKSettings() {
+  return db.yokassaSettings.upsert({
+    where: { id: "global" },
+    update: {},
+    create: { id: "global", mode: "test", testSubscriptionEnabled: false },
+  });
+}
+
+export async function getYKMode(): Promise<YKMode> {
+  const settings = await getYKSettings();
+  return settings.mode === "production" ? "production" : "test";
+}
+
+export async function isYKTestMode(): Promise<boolean> {
+  return (await getYKMode()) === "test";
+}
+
 export async function getYKCredentials(): Promise<{
+  mode: YKMode;
   shopId: string;
   secret: string;
 }> {
-  let mode = "test";
-  try {
-    const settings = await db.yokassaSettings.findUnique({
-      where: { id: "global" },
-    });
-    mode = settings?.mode ?? "test";
-  } catch {
-    // table may not exist yet — fallback to test
+  const mode = await getYKMode();
+  const creds =
+    mode === "production"
+      ? {
+          shopId: config.YOKASSA_SHOP_ID,
+          secret: config.YOKASSA_SECRET,
+        }
+      : {
+          shopId: config.YOKASSA_TEST_SHOP_ID,
+          secret: config.YOKASSA_TEST_SECRET,
+        };
+
+  if (!creds.shopId || !creds.secret) {
+    throw new Error(
+      mode === "production"
+        ? "YooKassa production credentials are not configured"
+        : "YooKassa test credentials are not configured",
+    );
   }
 
-  if (mode === "production") {
-    return {
-      shopId: config.YOKASSA_SHOP_ID,
-      secret: config.YOKASSA_SECRET,
-    };
-  }
-  return {
-    shopId: config.YOKASSA_TEST_SHOP_ID,
-    secret: config.YOKASSA_TEST_SECRET,
-  };
+  return { mode, ...creds };
 }
 
 async function ykRequest<T>(
@@ -124,6 +156,7 @@ async function ykRequest<T>(
     Authorization: `Basic ${credentials}`,
     "Content-Type": "application/json",
   };
+
   if (idempotencyKey) {
     headers["Idempotence-Key"] = idempotencyKey;
   }
@@ -135,18 +168,13 @@ async function ykRequest<T>(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      `YooKassa ${method} ${path} -> ${res.status}: ${JSON.stringify(err)}`,
-    );
+    const raw = await res.text();
+    throw new Error(`YooKassa ${method} ${path} -> ${res.status}: ${raw}`);
   }
 
   return res.json() as Promise<T>;
 }
 
-/**
- * Create a YooKassa payment.
- */
 export async function createYKPayment(
   payload: YKPaymentRequest,
   idempotencyKey: string,
@@ -159,42 +187,41 @@ export async function createYKPayment(
   );
 }
 
-/**
- * Get YooKassa payment by ID.
- */
-export async function getYKPayment(paymentId: string): Promise<YKPaymentResponse> {
+export async function getYKPayment(
+  paymentId: string,
+): Promise<YKPaymentResponse> {
   return ykRequest<YKPaymentResponse>("GET", `/payments/${paymentId}`);
 }
 
-/**
- * Cancel a payment that is in waiting_for_capture state.
- */
-export async function cancelYKPayment(paymentId: string): Promise<YKPaymentResponse> {
-  return ykRequest<YKPaymentResponse>(
+export async function createYKRefund(
+  paymentId: string,
+  amount: number,
+  description: string,
+): Promise<YKRefundResponse> {
+  return ykRequest<YKRefundResponse>(
     "POST",
-    `/payments/${paymentId}/cancel`,
-    {},
+    "/refunds",
+    {
+      payment_id: paymentId,
+      amount: { value: amount.toFixed(2), currency: "RUB" },
+      description,
+    },
     crypto.randomUUID(),
   );
 }
 
-/**
- * Get a saved payment method by ID.
- */
-export async function getYKPaymentMethod(methodId: string): Promise<YKPaymentMethod> {
+export async function getYKPaymentMethod(
+  methodId: string,
+): Promise<YKPaymentMethod> {
   return ykRequest<YKPaymentMethod>("GET", `/payment_methods/${methodId}`);
 }
 
-/**
- * Create a payment using a saved card (auto-payment).
- */
 export async function createAutoPayment(
   methodId: string,
   amount: number,
   description: string,
   metadata?: Record<string, string>,
 ): Promise<YKPaymentResponse> {
-  const idempotencyKey = crypto.randomUUID();
   return createYKPayment(
     {
       amount: { value: amount.toFixed(2), currency: "RUB" },
@@ -203,107 +230,291 @@ export async function createAutoPayment(
       description,
       metadata,
     },
-    idempotencyKey,
+    crypto.randomUUID(),
   );
 }
 
-/**
- * Handle successful payment: credit user balance and optionally buy subscription.
- */
-export async function onYKPaymentSuccess(
-  userId: string,
-  amount: number,
-  metadata?: Record<string, string>,
-) {
-  // Credit balance
-  await db.user.update({
-    where: { id: userId },
-    data: { balance: { increment: amount } },
-  });
-
-  await db.transaction.create({
-    data: {
-      userId,
-      type: "topup",
-      amount,
-      title: `Пополнение через ЮKassa на ${amount} ₽`,
-    },
-  });
-
-  // Auto-buy subscription if metadata says so
-  if (metadata?.subscriptionPlanId && metadata?.subscriptionPeriod) {
-    await autoPurchaseSubscription(
-      userId,
-      metadata.subscriptionPlanId,
-      metadata.subscriptionPeriod,
-    );
-  }
+export function getRenewalPeriodMs(period: string) {
+  return PERIOD_MS[period] ?? PERIOD_MS.monthly;
 }
 
-const PERIOD_DAYS: Record<string, number> = {
-  monthly: 30,
-  "3months": 90,
-  "6months": 180,
-  yearly: 365,
-};
-
-async function autoPurchaseSubscription(
-  userId: string,
+export async function getSubscriptionCharge(
   planSlug: string,
   period: string,
+  isTestSubscription: boolean,
 ) {
-  try {
-    const plan = await db.subscriptionPlan.findUnique({
-      where: { slug: planSlug, isActive: true },
-      include: { prices: true },
+  if (isTestSubscription || period === "test_2m") {
+    return { amount: 10, title: "Тестовая подписка" };
+  }
+
+  const plan = await db.subscriptionPlan.findFirst({
+    where: { slug: planSlug, isActive: true },
+    include: { prices: true },
+  });
+
+  if (!plan) {
+    throw new Error("Plan not found");
+  }
+
+  const priceItem = plan.prices.find((item) => item.period === period);
+  if (!priceItem) {
+    throw new Error("Invalid billing period");
+  }
+
+  const months =
+    period === "3months" ? 3 : period === "6months" ? 6 : period === "yearly" ? 12 : 1;
+
+  return {
+    amount: Math.round(priceItem.price * months * 100) / 100,
+    title: plan.name,
+  };
+}
+
+export async function onYKPaymentSuccess(paymentId: string) {
+  const payment = await db.payment.findUnique({
+    where: { id: paymentId },
+  });
+
+  if (!payment) {
+    throw new Error("Payment not found");
+  }
+
+  if (payment.creditedAt) {
+    return;
+  }
+
+  const metadata = (payment.metadata as Record<string, string> | null) ?? {};
+  const purpose = metadata.purpose ?? "topup";
+
+  await db.$transaction(async (tx) => {
+    const current = await tx.payment.findUnique({
+      where: { id: paymentId },
+      select: { creditedAt: true },
     });
-    if (!plan) return;
 
-    const priceItem = plan.prices.find((p) => p.period === period);
-    if (!priceItem) return;
+    if (current?.creditedAt) {
+      return;
+    }
 
-    const days = PERIOD_DAYS[period];
-    if (!days) return;
-
-    const months = days / 30;
-    const totalPrice = priceItem.price * months;
-
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { balance: true },
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: "success",
+        creditedAt: new Date(),
+      },
     });
-    if (!user || user.balance < totalPrice) return;
 
-    const now = new Date();
-    const activeUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-
-    await db.$transaction(async (tx) => {
+    if (purpose === "topup" || purpose === "subscription_topup") {
       await tx.user.update({
-        where: { id: userId },
-        data: { balance: { decrement: totalPrice } },
+        where: { id: payment.userId },
+        data: { balance: { increment: payment.amount } },
       });
 
       await tx.transaction.create({
         data: {
-          userId,
-          type: "subscription",
-          amount: -totalPrice,
-          title: `Подписка "${plan.name}"`,
+          userId: payment.userId,
+          type: "topup",
+          amount: payment.amount,
+          title: `${payment.isTest ? "[TEST] " : ""}Пополнение через YooKassa на ${payment.amount} ₽`,
+          isTest: payment.isTest,
+          paymentId: payment.id,
+        },
+      });
+    }
+  });
+
+  if (
+    metadata.subscriptionPlanId &&
+    metadata.subscriptionPeriod &&
+    (purpose === "topup" || purpose === "subscription_topup")
+  ) {
+    await autoPurchaseSubscription(
+      payment.userId,
+      metadata.subscriptionPlanId,
+      metadata.subscriptionPeriod,
+      metadata.autoRenewPaymentMethodId ?? null,
+    );
+  }
+}
+
+export async function autoPurchaseSubscription(
+  userId: string,
+  planSlug: string,
+  period: string,
+  paymentMethodId?: string | null,
+) {
+  const isTestSubscription = period === "test_2m";
+  const charge = await getSubscriptionCharge(planSlug, period, isTestSubscription);
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { balance: true },
+  });
+
+  if (!user || user.balance < charge.amount) {
+    throw new Error("Insufficient balance for subscription purchase");
+  }
+
+  const plan =
+    isTestSubscription || planSlug === "test-subscription"
+      ? { slug: "test-subscription", name: "Тестовая подписка" }
+      : await db.subscriptionPlan.findFirst({
+          where: { slug: planSlug, isActive: true },
+          select: { slug: true, name: true },
+        });
+
+  if (!plan) {
+    throw new Error("Plan not found");
+  }
+
+  const now = new Date();
+  const extensionMs = getRenewalPeriodMs(period);
+  const currentSubscription = await db.subscription.findUnique({
+    where: { userId },
+    select: { activeUntil: true },
+  });
+  const base = currentSubscription?.activeUntil && currentSubscription.activeUntil > now
+    ? currentSubscription.activeUntil
+    : now;
+  const activeUntil = new Date(base.getTime() + extensionMs);
+  const isTest = await isYKTestMode();
+
+  await db.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { balance: { decrement: charge.amount } },
+    });
+
+    await tx.transaction.create({
+      data: {
+        userId,
+        type: "subscription",
+        amount: -charge.amount,
+        title: `${isTest ? "[TEST] " : ""}Подписка "${plan.name}"`,
+        isTest,
+      },
+    });
+
+    await tx.subscription.upsert({
+      where: { userId },
+      update: {
+        planId: plan.slug,
+        planName: plan.name,
+        activeUntil,
+        autoRenewal: Boolean(paymentMethodId),
+        billingPeriod: period,
+        autoRenewPaymentMethodId: paymentMethodId ?? null,
+      },
+      create: {
+        userId,
+        planId: plan.slug,
+        planName: plan.name,
+        activeUntil,
+        autoRenewal: Boolean(paymentMethodId),
+        billingPeriod: period,
+        autoRenewPaymentMethodId: paymentMethodId ?? null,
+      },
+    });
+  });
+}
+
+export async function processAutoRenewals() {
+  const settings = await getYKSettings();
+  const now = new Date();
+  const dueSubscriptions = await db.subscription.findMany({
+    where: {
+      autoRenewal: true,
+      activeUntil: { lte: now },
+      autoRenewPaymentMethodId: { not: null },
+    },
+    take: 25,
+  });
+
+  for (const subscription of dueSubscriptions) {
+    try {
+      const method = await db.paymentMethod.findFirst({
+        where: {
+          id: subscription.autoRenewPaymentMethodId ?? undefined,
+          userId: subscription.userId,
+          allowAutoCharge: true,
         },
       });
 
-      await tx.subscription.upsert({
-        where: { userId },
-        update: { planId: plan.slug, planName: plan.name, activeUntil },
-        create: {
-          userId,
-          planId: plan.slug,
-          planName: plan.name,
-          activeUntil,
+      if (!method) {
+        await db.subscription.update({
+          where: { userId: subscription.userId },
+          data: { autoRenewal: false },
+        });
+        continue;
+      }
+
+      const isTestSubscription =
+        settings.testSubscriptionEnabled && subscription.planId === "test-subscription";
+      const period = isTestSubscription ? "test_2m" : subscription.billingPeriod;
+      const charge = await getSubscriptionCharge(
+        subscription.planId,
+        period,
+        isTestSubscription,
+      );
+      const isTest = await isYKTestMode();
+
+      const ykPayment = await createAutoPayment(
+        method.yokassaMethodId,
+        charge.amount,
+        `${isTest ? "[TEST] " : ""}Автопродление ${subscription.planName}`,
+        {
+          userId: subscription.userId,
+          purpose: "autorenew",
+          subscriptionPlanId: subscription.planId,
+          subscriptionPeriod: period,
+          autoRenewPaymentMethodId: method.id,
+        },
+      );
+
+      await db.payment.create({
+        data: {
+          userId: subscription.userId,
+          yokassaPaymentId: ykPayment.id,
+          amount: charge.amount,
+          status: ykPayment.status === "succeeded" ? "success" : "pending",
+          provider: "yokassa",
+          paymentType: "autorenew",
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          description: `${isTest ? "[TEST] " : ""}Автопродление ${subscription.planName}`,
+          metadata: {
+            userId: subscription.userId,
+            purpose: "autorenew",
+            subscriptionPlanId: subscription.planId,
+            subscriptionPeriod: period,
+            autoRenewPaymentMethodId: method.id,
+          },
+          isTest,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          creditedAt: ykPayment.status === "succeeded" ? new Date() : null,
         },
       });
-    });
-  } catch (err) {
-    console.error("[YK] autoPurchaseSubscription error:", err);
+
+      if (ykPayment.status === "succeeded") {
+        const extensionMs = getRenewalPeriodMs(period);
+        await db.transaction.create({
+          data: {
+            userId: subscription.userId,
+            type: "subscription",
+            amount: -charge.amount,
+            title: `${isTest ? "[TEST] " : ""}Автопродление "${subscription.planName}"`,
+            isTest,
+          },
+        });
+
+        await db.subscription.update({
+          where: { userId: subscription.userId },
+          data: {
+            activeUntil: new Date(now.getTime() + extensionMs),
+            billingPeriod: period,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("[YK] auto-renew failed:", subscription.userId, error);
+    }
   }
 }
