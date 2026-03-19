@@ -45,6 +45,7 @@ export async function fetchPublicPlans(): Promise<SubscriptionPlan[]> {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-store",
+        signal: AbortSignal.timeout(5000),
       },
     );
 
