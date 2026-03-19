@@ -69,7 +69,10 @@ interface YKBillingState {
     opts?: { cardMethodId?: string; subscriptionPlanId?: string; subscriptionPeriod?: string },
   ) => Promise<{ confirmationUrl: string | null } | null>;
 
-  startLinkCard: () => Promise<{ confirmationUrl: string | null } | null>;
+  startLinkCard: (opts?: {
+    subscriptionPlanId?: string;
+    subscriptionPeriod?: string;
+  }) => Promise<{ confirmationUrl: string | null } | null>;
 
   startPromoSubscribe: (planSlug: string, period: string) => Promise<{ confirmationUrl: string | null; promoAmount: number } | null>;
 
@@ -114,9 +117,12 @@ export const useYKBilling = create<YKBillingState>((set, get) => ({
     }
   },
 
-  startLinkCard: async () => {
+  startLinkCard: async (opts) => {
     try {
-      const res = await apiClient.post<YKLinkCardResponse>("/yokassa/link-card");
+      const res = await apiClient.post<YKLinkCardResponse>("/yokassa/link-card", {
+        subscriptionPlanId: opts?.subscriptionPlanId,
+        subscriptionPeriod: opts?.subscriptionPeriod,
+      });
       persistPendingPayment({
         paymentId: res.paymentId,
         confirmationUrl: res.confirmationUrl,

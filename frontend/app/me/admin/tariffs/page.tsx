@@ -37,6 +37,7 @@ export default function TariffsAdminPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [ykMode, setYkMode] = useState<"test" | "production">("test");
   const [testSubscriptionEnabled, setTestSubscriptionEnabled] = useState(false);
+  const [sbpProvider, setSbpProvider] = useState<"tochka" | "yookassa">("tochka");
   const [hideAiMenuForAll, setHideAiMenuForAll] = useState(false);
   const [prodCredsReady, setProdCredsReady] = useState(false);
   const [testCredsReady, setTestCredsReady] = useState(false);
@@ -73,6 +74,7 @@ export default function TariffsAdminPage() {
       const res = await apiClient.get<AdminYokassaSettings>("/admin/yokassa/settings");
       setYkMode(res.mode);
       setTestSubscriptionEnabled(res.testSubscriptionEnabled);
+      setSbpProvider(res.sbpProvider);
       setHideAiMenuForAll(res.hideAiMenuForAll);
       setProdCredsReady(res.productionCredentialsConfigured);
       setTestCredsReady(res.testCredentialsConfigured);
@@ -133,6 +135,23 @@ export default function TariffsAdminPage() {
       toast.success(next ? "AI скрыт у всех пользователей" : "AI снова показывается в меню");
     } catch {
       toast.error("Не удалось обновить глобальную настройку AI");
+    } finally {
+      setYkSaving(false);
+    }
+  };
+
+  const handleChangeSbpProvider = async (next: "tochka" | "yookassa") => {
+    setYkSaving(true);
+    try {
+      await apiClient.patch("/admin/yokassa/settings", { sbpProvider: next });
+      setSbpProvider(next);
+      toast.success(
+        next === "yookassa"
+          ? "СБП переведён на YooKassa"
+          : "СБП переведён на Точка Банк",
+      );
+    } catch {
+      toast.error("Не удалось обновить провайдера СБП");
     } finally {
       setYkSaving(false);
     }
@@ -283,6 +302,30 @@ export default function TariffsAdminPage() {
                 onCheckedChange={handleToggleGlobalAiMenu}
                 disabled={ykSaving}
               />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/50 p-4">
+            <div className="font-semibold mb-3">Провайдер СБП</div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={sbpProvider === "tochka" ? "default" : "outline"}
+                onClick={() => handleChangeSbpProvider("tochka")}
+                disabled={ykSaving}
+                className="rounded-xl"
+              >
+                Точка Банк
+              </Button>
+              <Button
+                type="button"
+                variant={sbpProvider === "yookassa" ? "default" : "outline"}
+                onClick={() => handleChangeSbpProvider("yookassa")}
+                disabled={ykSaving}
+                className="rounded-xl"
+              >
+                YooKassa
+              </Button>
             </div>
           </div>
 

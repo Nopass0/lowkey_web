@@ -177,6 +177,7 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
     return {
       mode: settings.mode,
       testSubscriptionEnabled: settings.testSubscriptionEnabled,
+      sbpProvider: settings.sbpProvider,
       hideAiMenuForAll: aiSettings.hideAiMenuForAll,
       productionCredentialsConfigured: Boolean(
         config.YOKASSA_SHOP_ID && config.YOKASSA_SECRET,
@@ -198,11 +199,13 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
             ...(typeof body.testSubscriptionEnabled === "boolean"
               ? { testSubscriptionEnabled: body.testSubscriptionEnabled }
               : {}),
+            ...(body.sbpProvider ? { sbpProvider: body.sbpProvider } : {}),
           },
           create: {
             id: "global",
             mode: body.mode ?? "test",
             testSubscriptionEnabled: body.testSubscriptionEnabled ?? false,
+            sbpProvider: body.sbpProvider ?? "tochka",
           },
         }),
         typeof body.hideAiMenuForAll === "boolean"
@@ -220,6 +223,7 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
       return {
         mode: settings.mode,
         testSubscriptionEnabled: settings.testSubscriptionEnabled,
+        sbpProvider: settings.sbpProvider,
         hideAiMenuForAll: aiSettings.hideAiMenuForAll,
       };
     },
@@ -229,6 +233,9 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
           t.Union([t.Literal("test"), t.Literal("production")]),
         ),
         testSubscriptionEnabled: t.Optional(t.Boolean()),
+        sbpProvider: t.Optional(
+          t.Union([t.Literal("tochka"), t.Literal("yookassa")]),
+        ),
         hideAiMenuForAll: t.Optional(t.Boolean()),
       }),
     },

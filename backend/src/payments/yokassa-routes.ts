@@ -14,7 +14,6 @@ import {
   createYKPayment,
   createYKRefund,
   getYKPayment,
-  getYKSettings,
   isYKTestMode,
   onYKPaymentSuccess,
   type YKPaymentMethod,
@@ -107,8 +106,10 @@ async function handleCompletedYKPayment(
   }
 
   if (purpose === "link_card") {
+    let savedMethodId: string | null = null;
     if (ykPayment.payment_method?.saved) {
-      await savePaymentMethod(payment.userId, ykPayment.payment_method);
+      const savedMethod = await savePaymentMethod(payment.userId, ykPayment.payment_method);
+      savedMethodId = savedMethod.id;
     }
 
     await db.$transaction(async (tx) => {
@@ -144,6 +145,18 @@ async function handleCompletedYKPayment(
         },
       });
     });
+
+    const planId = getMetadataValue(payment.metadata, "subscriptionPlanId");
+    const period = getMetadataValue(payment.metadata, "subscriptionPeriod");
+    if (planId && period && savedMethodId) {
+      await autoPurchaseSubscription(
+        payment.userId,
+        planId,
+        period,
+        savedMethodId,
+        payment.isTest,
+      );
+    }
     return;
   }
 
@@ -160,6 +173,7 @@ async function handleCompletedYKPayment(
         planSlug,
         period,
         saved?.id ?? null,
+        payment.isTest,
       );
 
       await db.payment.update({
@@ -173,7 +187,7 @@ async function handleCompletedYKPayment(
     return;
   }
 
-  if (purpose === "autorenew") {
+    if (purpose === "autorenew") {
     const planSlug = getMetadataValue(payment.metadata, "subscriptionPlanId");
     const period = getMetadataValue(payment.metadata, "subscriptionPeriod") ?? "monthly";
     const paymentMethodId =
@@ -211,7 +225,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
         subscriptionPeriod,
       } = body;
 
-      if (amount < 10) {
+    if (amount < 10) {
         set.status = 400;
         return { message: "Минимальная сумма пополнения 10 ₽" };
       }
@@ -264,7 +278,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
               payment_method_type: paymentType,
               capture: true,
               save_payment_method:
-                paymentType === "bank_card" && Boolean(subscriptionPlanId),
+                paymentType === "bank_card" || paymentType === "sbp",
               description: `${isTest ? "[TEST] " : ""}Пополнение баланса lowkey`,
               confirmation: {
                 type: "redirect",
@@ -303,7 +317,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
           metadata: paymentMethodDbId
             ? { ...metadata, autoRenewPaymentMethodId: paymentMethodDbId }
             : metadata,
-          isTest,
+          isTest: ykPayment.test ?? isTest,
           expiresAt: new Date(
             ykPayment.expires_at
               ? new Date(ykPayment.expires_at).getTime()
@@ -340,7 +354,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
       }),
     },
   )
-  .post("/link-card", async ({ user, set }) => {
+  .post("/link-card", async ({ user, body, set }) => {
     try {
       const isTest = await isYKTestMode();
       const receipt = await buildYKReceipt(
@@ -360,7 +374,16 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
             type: "redirect",
             return_url: `${YOKASSA_RETURN_URL}?linked=1`,
           },
-          metadata: { userId: user.userId, purpose: "link_card" },
+          metadata: {
+            userId: user.userId,
+            purpose: "link_card",
+            ...(body.subscriptionPlanId
+              ? {
+                  subscriptionPlanId: body.subscriptionPlanId,
+                  subscriptionPeriod: body.subscriptionPeriod ?? "monthly",
+                }
+              : {}),
+          },
           ...(receipt ? { receipt } : {}),
         },
         crypto.randomUUID(),
@@ -376,8 +399,17 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
           paymentType: "link_card",
           confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
           description: `${isTest ? "[TEST] " : ""}Привязка карты`,
-          metadata: { userId: user.userId, purpose: "link_card" },
-          isTest,
+          metadata: {
+            userId: user.userId,
+            purpose: "link_card",
+            ...(body.subscriptionPlanId
+              ? {
+                  subscriptionPlanId: body.subscriptionPlanId,
+                  subscriptionPeriod: body.subscriptionPeriod ?? "monthly",
+                }
+              : {}),
+          },
+          isTest: ykPayment.test ?? isTest,
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         },
       });
@@ -395,6 +427,11 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
           error instanceof Error ? error.message : "Ошибка привязки карты",
       };
     }
+  }, {
+    body: t.Optional(t.Object({
+      subscriptionPlanId: t.Optional(t.String()),
+      subscriptionPeriod: t.Optional(t.String()),
+    })),
   })
   .patch(
     "/cards/:id/default",
@@ -597,7 +634,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
               planSlug: body.planSlug,
               period: body.period,
             },
-            isTest,
+            isTest: ykPayment.test ?? isTest,
             expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           },
         });

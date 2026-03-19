@@ -108,6 +108,7 @@ export interface UserProfile {
   telegramId: string | null;
   telegramLinkCode: string | null;
   referralRate: number;
+  sbpProvider?: "tochka" | "yookassa";
   vpnAccess: UserVpnAccess | null;
 }
 
@@ -229,6 +230,7 @@ export interface YKPromoSubscribeResponse {
 export interface AdminYokassaSettings {
   mode: "test" | "production";
   testSubscriptionEnabled: boolean;
+  sbpProvider: "tochka" | "yookassa";
   hideAiMenuForAll: boolean;
   productionCredentialsConfigured: boolean;
   testCredentialsConfigured: boolean;

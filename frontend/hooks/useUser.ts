@@ -42,6 +42,7 @@ const MOCK_PROFILE: UserProfile = {
   telegramId: null,
   telegramLinkCode: null,
   referralRate: 10,
+  sbpProvider: "tochka",
   vpnAccess: {
     serverIp: "46.226.166.226",
     location: "RU",

@@ -81,6 +81,7 @@ export interface YKPaymentResponse {
   expires_at?: string;
   metadata?: Record<string, string>;
   paid: boolean;
+  test?: boolean;
 }
 
 export interface YKRefundResponse {
@@ -394,6 +395,7 @@ export async function onYKPaymentSuccess(paymentId: string) {
       metadata.subscriptionPlanId,
       metadata.subscriptionPeriod,
       metadata.autoRenewPaymentMethodId ?? null,
+      payment.isTest,
     );
   }
 }
@@ -403,6 +405,7 @@ export async function autoPurchaseSubscription(
   planSlug: string,
   period: string,
   paymentMethodId?: string | null,
+  isTestOverride?: boolean,
 ) {
   const isTestSubscription = period === "test_2m";
   const charge = await getSubscriptionCharge(planSlug, period, isTestSubscription);
@@ -437,7 +440,8 @@ export async function autoPurchaseSubscription(
     ? currentSubscription.activeUntil
     : now;
   const activeUntil = new Date(base.getTime() + extensionMs);
-  const isTest = await isYKTestMode();
+  const isTest =
+    typeof isTestOverride === "boolean" ? isTestOverride : await isYKTestMode();
 
   await db.$transaction(async (tx) => {
     await tx.user.update({

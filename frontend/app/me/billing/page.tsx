@@ -534,29 +534,57 @@ export default function BillingPage() {
   const handleTopUpSBP = async () => {
     const val = parseInt(topUpAmount, 10);
     if (isNaN(val) || val < 1) return;
+    if (profile.sbpProvider === "yookassa") {
+      const res = await startTopup(val, "sbp", {
+        subscriptionPlanId: pendingPlanPurchase?.planId,
+        subscriptionPeriod: pendingPlanPurchase ? period : undefined,
+      });
+      if (res?.confirmationUrl) {
+        window.location.assign(res.confirmationUrl);
+      }
+      return;
+    }
     await startPayment(val);
   };
 
-  const handleLinkCard = async () => {
-    const res = await startLinkCard();
+  const handleLinkCard = async (opts?: {
+    subscriptionPlanId?: string;
+    subscriptionPeriod?: string;
+  }) => {
+    const res = await startLinkCard(opts);
     if (res?.confirmationUrl) {
       window.location.assign(res.confirmationUrl);
     }
   };
 
   const handleSubscribe = async (planId: string, cost: number) => {
+    const autoRenewMethodId =
+      selectedCardId ??
+      savedCards.find((card) => card.isDefault)?.id ??
+      savedCards.find((card) => card.allowAutoCharge !== false)?.id;
+
+    if (!autoRenewMethodId) {
+      if (profile.balance >= cost) {
+        await handleLinkCard({
+          subscriptionPlanId: planId,
+          subscriptionPeriod: period,
+        });
+        return;
+      }
+    }
+
     if (profile.balance >= cost) {
       const result = await purchaseSubscription(
         planId,
         period,
-        selectedCardId ?? undefined,
+        autoRenewMethodId ?? undefined,
       );
       if (result) refetch();
     } else {
       const needed = cost - profile.balance;
       setTopUpAmount(needed.toString());
       setPendingPlanPurchase({ planId, cost });
-      setPaymentType("bank_card");
+      setPaymentType(profile.sbpProvider === "yookassa" ? "sbp" : "bank_card");
       setIsTopUpOpen(true);
     }
   };

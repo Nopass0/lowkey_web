@@ -49,6 +49,11 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         update: {},
         create: { id: "global" },
       });
+      const ykSettings = await db.yokassaSettings.upsert({
+        where: { id: "global" },
+        update: {},
+        create: { id: "global", mode: "test", testSubscriptionEnabled: false, sbpProvider: "tochka" },
+      });
 
       if (!dbUser) {
         set.status = 404;
@@ -107,6 +112,7 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         telegramId: dbUser.telegramId ? dbUser.telegramId.toString() : null,
         telegramLinkCode: !dbUser.telegramId ? linkCode : null,
         referralRate: dbUser.referralRate,
+        sbpProvider: ykSettings.sbpProvider,
         vpnAccess: vpnServer
           ? {
               serverIp: vpnServer.ip,
