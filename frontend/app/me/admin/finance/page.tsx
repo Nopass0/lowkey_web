@@ -335,7 +335,7 @@ export default function AdminFinancePage() {
 
   return (
     <div className="space-y-8 pb-20">
-      <section className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(15,118,110,0.16),_transparent_30%),linear-gradient(135deg,_rgba(255,255,255,0.92),_rgba(240,249,255,0.9))] p-6 shadow-sm">
+      <section className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(15,118,110,0.2),_transparent_30%),linear-gradient(135deg,_rgba(255,255,255,0.92),_rgba(240,249,255,0.9))] p-6 shadow-sm dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.18),_transparent_32%),linear-gradient(135deg,_rgba(15,23,42,0.92),_rgba(17,24,39,0.96))]">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
@@ -410,48 +410,48 @@ export default function AdminFinancePage() {
             title="Баланс клиентов"
             value={formatCurrency(balance.currentBalance)}
             hint="Суммарный остаток на пользовательских балансах"
-            colorClass="text-slate-900"
-            bgClass="bg-slate-100"
+            colorClass="text-slate-900 dark:text-slate-50"
+            bgClass="bg-slate-100 dark:bg-slate-800/80"
           />
           <StatCard
             icon={ArrowDownToLine}
             title="Выведено из бизнеса"
             value={formatCurrency(balance.totalBusinessWithdrawals)}
             hint="Все созданные выводы средств в аналитике"
-            colorClass="text-rose-600"
-            bgClass="bg-rose-100"
+            colorClass="text-rose-600 dark:text-rose-300"
+            bgClass="bg-rose-100 dark:bg-rose-950/40"
           />
           <StatCard
             icon={PiggyBank}
             title="Доступная прибыль"
             value={formatCurrency(balance.availableProfit)}
             hint="Уже с учетом налога, эквайринга, реферальных выплат и выводов"
-            colorClass="text-emerald-600"
-            bgClass="bg-emerald-100"
+            colorClass="text-emerald-600 dark:text-emerald-300"
+            bgClass="bg-emerald-100 dark:bg-emerald-950/40"
           />
           <StatCard
             icon={CreditCard}
             title="Комиссия эквайринга"
             value={formatCurrency(balance.acquiringFees)}
             hint={`${balance.acquiringFeeRate}% от пополнений`}
-            colorClass="text-amber-600"
-            bgClass="bg-amber-100"
+            colorClass="text-amber-600 dark:text-amber-300"
+            bgClass="bg-amber-100 dark:bg-amber-950/40"
           />
           <StatCard
             icon={Calculator}
             title="Налог"
             value={formatCurrency(balance.taxAmount)}
             hint={`${balance.taxRate}% от положительной прибыли до налога`}
-            colorClass="text-blue-600"
-            bgClass="bg-blue-100"
+            colorClass="text-blue-600 dark:text-blue-300"
+            bgClass="bg-blue-100 dark:bg-blue-950/40"
           />
           <StatCard
             icon={Users}
             title="Резерв и ожидание"
             value={formatCurrency(balance.refHoldReserve + balance.pendingWithdrawals)}
             hint="Реферальный резерв плюс заявки на реферальный вывод"
-            colorClass="text-violet-600"
-            bgClass="bg-violet-100"
+            colorClass="text-violet-600 dark:text-violet-300"
+            bgClass="bg-violet-100 dark:bg-violet-950/40"
           />
         </section>
       )}

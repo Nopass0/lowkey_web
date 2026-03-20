@@ -91,6 +91,72 @@ function roundMoney(value: number): number {
   return Number(value.toFixed(2));
 }
 
+const YOOKASSA_COMMISSION_VAT_MULTIPLIER = 1.22;
+const DEFAULT_YOOKASSA_CARD_FEE_RATE = 3.8;
+const DEFAULT_YOOKASSA_SBP_FEE_RATE = 0.7;
+
+type FinanceSettingsShape = Awaited<ReturnType<typeof getFinanceSettings>>;
+type AnalyticsPayment = {
+  amount: number;
+  provider: string;
+  paymentType: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  creditedAt?: Date | null;
+};
+
+function getPaymentPurpose(metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return "topup";
+  }
+
+  const purpose = (metadata as Record<string, unknown>).purpose;
+  return typeof purpose === "string" && purpose.trim() ? purpose : "topup";
+}
+
+function isBalanceTopupPurpose(purpose: string): boolean {
+  return purpose === "topup" || purpose === "subscription_topup";
+}
+
+function isDirectSubscriptionPurpose(purpose: string): boolean {
+  return purpose === "promo_subscribe" || purpose === "autorenew";
+}
+
+function getEffectiveYookassaCardRate(settings: FinanceSettingsShape): number {
+  return settings.acquiringFeeRate > 0
+    ? settings.acquiringFeeRate
+    : DEFAULT_YOOKASSA_CARD_FEE_RATE;
+}
+
+function getEffectiveFeeRate(
+  payment: Pick<AnalyticsPayment, "provider" | "paymentType">,
+  settings: FinanceSettingsShape,
+): number {
+  if (payment.provider === "yokassa") {
+    if (payment.paymentType === "sbp") {
+      return DEFAULT_YOOKASSA_SBP_FEE_RATE * YOOKASSA_COMMISSION_VAT_MULTIPLIER;
+    }
+
+    return (
+      getEffectiveYookassaCardRate(settings) *
+      YOOKASSA_COMMISSION_VAT_MULTIPLIER
+    );
+  }
+
+  if (payment.paymentType === "sbp") {
+    return DEFAULT_YOOKASSA_SBP_FEE_RATE;
+  }
+
+  return settings.acquiringFeeRate;
+}
+
+function getPaymentAcquiringFee(
+  payment: Pick<AnalyticsPayment, "amount" | "provider" | "paymentType">,
+  settings: FinanceSettingsShape,
+): number {
+  return roundMoney(payment.amount * (getEffectiveFeeRate(payment, settings) / 100));
+}
+
 export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
   .use(adminMiddleware)
 
@@ -118,10 +184,35 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
         const settings = await getFinanceSettings();
         const groupBy = detectGroupBy(startDate, endDate);
 
-        const [transactions, newUsers, withdrawals, usersBeforeRange] =
+        const [transactions, payments, newUsers, withdrawals, usersBeforeRange] =
           await Promise.all([
             db.transaction.findMany({
-              where: { createdAt: { gte: startDate, lte: endDate } },
+              where: {
+                createdAt: { gte: startDate, lte: endDate },
+                isTest: false,
+              },
+              orderBy: { createdAt: "asc" },
+            }),
+            db.payment.findMany({
+              where: {
+                status: "success",
+                isTest: false,
+                OR: [
+                  { creditedAt: { gte: startDate, lte: endDate } },
+                  {
+                    creditedAt: null,
+                    createdAt: { gte: startDate, lte: endDate },
+                  },
+                ],
+              },
+              select: {
+                amount: true,
+                provider: true,
+                paymentType: true,
+                metadata: true,
+                createdAt: true,
+                creditedAt: true,
+              },
               orderBy: { createdAt: "asc" },
             }),
             db.user.findMany({
@@ -184,11 +275,27 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
           point.newUsers += 1;
         }
 
+        let directSubscriptionRevenue = 0;
+        for (const payment of payments) {
+          const purpose = getPaymentPurpose(payment.metadata);
+          if (purpose === "link_card") {
+            continue;
+          }
+
+          const key = bucketKey(payment.creditedAt ?? payment.createdAt, groupBy);
+          const point = pointMap.get(key);
+          if (!point) continue;
+
+          point.acquiringFee += getPaymentAcquiringFee(payment, settings);
+
+          if (isDirectSubscriptionPurpose(purpose)) {
+            directSubscriptionRevenue += payment.amount;
+          }
+        }
+
         let runningUsers = usersBeforeRange;
         const points = Array.from(pointMap.values()).map((point) => {
-          point.acquiringFee = roundMoney(
-            point.topups * (settings.acquiringFeeRate / 100),
-          );
+          point.acquiringFee = roundMoney(point.acquiringFee);
 
           const profitBeforeTax =
             point.topups -
@@ -245,7 +352,7 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
         totals.acquiringFee = roundMoney(totals.acquiringFee);
         totals.taxAmount = roundMoney(totals.taxAmount);
         totals.netProfit = roundMoney(totals.netProfit);
-        totals.revenue = roundMoney(totals.topups + totals.subscriptions);
+        totals.revenue = roundMoney(totals.topups + directSubscriptionRevenue);
 
         return {
           range: {
@@ -281,7 +388,7 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
         userBalances,
         pendingWithdrawals,
         userRefBalances,
-        totalTopups,
+        successfulPayments,
         totalReferralEarnings,
         totalBusinessWithdrawals,
         settings,
@@ -292,12 +399,21 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
           _sum: { amount: true },
         }),
         db.user.aggregate({ _sum: { referralBalance: true } }),
-        db.transaction.aggregate({
-          where: { type: "topup" },
-          _sum: { amount: true },
+        db.payment.findMany({
+          where: {
+            status: "success",
+            isTest: false,
+          },
+          select: {
+            amount: true,
+            provider: true,
+            paymentType: true,
+            metadata: true,
+            createdAt: true,
+          },
         }),
         db.transaction.aggregate({
-          where: { type: "referral_earning" },
+          where: { type: "referral_earning", isTest: false },
           _sum: { amount: true },
         }),
         db.financeWithdrawal.aggregate({
@@ -309,16 +425,37 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
       const currentBalance = roundMoney(userBalances._sum.balance ?? 0);
       const pending = roundMoney(pendingWithdrawals._sum.amount ?? 0);
       const refHoldReserve = roundMoney(userRefBalances._sum.referralBalance ?? 0);
-      const topups = roundMoney(totalTopups._sum.amount ?? 0);
+      const revenuePayments = successfulPayments.filter(
+        (payment) => getPaymentPurpose(payment.metadata) !== "link_card",
+      );
+      const topups = roundMoney(
+        revenuePayments
+          .filter((payment) => isBalanceTopupPurpose(getPaymentPurpose(payment.metadata)))
+          .reduce((sum, payment) => sum + payment.amount, 0),
+      );
+      const directSubscriptions = roundMoney(
+        revenuePayments
+          .filter((payment) =>
+            isDirectSubscriptionPurpose(getPaymentPurpose(payment.metadata)),
+          )
+          .reduce((sum, payment) => sum + payment.amount, 0),
+      );
       const referralPaid = roundMoney(totalReferralEarnings._sum.amount ?? 0);
       const businessWithdrawals = roundMoney(
         totalBusinessWithdrawals._sum.amount ?? 0,
       );
       const acquiringFees = roundMoney(
-        topups * (settings.acquiringFeeRate / 100),
+        revenuePayments.reduce(
+          (sum, payment) => sum + getPaymentAcquiringFee(payment, settings),
+          0,
+        ),
       );
       const profitBeforeTax = roundMoney(
-        topups - referralPaid - businessWithdrawals - acquiringFees,
+        topups +
+          directSubscriptions -
+          referralPaid -
+          businessWithdrawals -
+          acquiringFees,
       );
       const taxAmount = roundMoney(
         Math.max(profitBeforeTax, 0) * (settings.taxRate / 100),
