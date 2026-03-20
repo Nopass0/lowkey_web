@@ -119,8 +119,10 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
-          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no "${SSH_USER}@${SSH_SERVER}" "mkdir -p '${REMOTE_BASE}'"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes"
+          sshpass -p "${SSH_PASSWORD}" ssh ${SSH_OPTS} "${SSH_USER}@${SSH_SERVER}" "mkdir -p '${REMOTE_BASE}'"
           sshpass -p "${SSH_PASSWORD}" rsync -az --delete \
+            -e "ssh ${SSH_OPTS}" \
             --exclude ".git/" \
             --exclude ".github/" \
             --exclude "frontend/node_modules/" \
@@ -178,9 +180,9 @@ jobs:
           YOKASSA_TEST_SECRET: ${{ env.YOKASSA_TEST_SECRET }}
           SITE_URL: ${{ env.SITE_URL }}
         run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes"
           sshpass -p "${SSH_PASSWORD}" ssh \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=30 \
+            ${SSH_OPTS} \
             "${SSH_USER}@${SSH_SERVER}" \
             "cd '${REMOTE_BASE}' && \
              chmod +x deploy/scripts/provision-server.sh && \
