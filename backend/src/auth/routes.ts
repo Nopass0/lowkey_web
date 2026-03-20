@@ -12,6 +12,12 @@ import { signJwt, getTokenExp } from "./jwt";
 import { authMiddleware } from "./middleware";
 import crypto from "crypto";
 import { sendTelegramMessage } from "../telegram";
+import {
+  buildYKReceipt,
+  createYKPayment,
+  getSubscriptionCharge,
+  isYKTestMode,
+} from "../payments/yokassa";
 
 /**
  * Generates a Gravatar-style avatar hash from a login string.
@@ -113,6 +119,320 @@ function buildBotAutologinHtml(
     </script>
   </body>
 </html>`;
+}
+
+async function createBotPaymentAction(params: {
+  userId: string;
+  action?: string;
+  amount?: string;
+  plan?: string;
+  period?: string;
+}) {
+  const action = params.action ?? "";
+  if (!action) {
+    return null;
+  }
+
+  const isTest = await isYKTestMode();
+
+  if (action === "topup") {
+    const amount = Number(params.amount ?? 0);
+    if (!Number.isFinite(amount) || amount < 10) {
+      throw new Error("Invalid topup amount");
+    }
+
+    const receipt = await buildYKReceipt(
+      params.userId,
+      amount,
+      "Пополнение баланса lowkey",
+      "full_prepayment",
+    );
+    const ykPayment = await createYKPayment(
+      {
+        amount: { value: amount.toFixed(2), currency: "RUB" },
+        payment_method_type: "bank_card",
+        capture: true,
+        save_payment_method: true,
+        description: `${isTest ? "[TEST] " : ""}Пополнение баланса lowkey`,
+        confirmation: {
+          type: "redirect",
+          return_url: `${config.SITE_URL}/me/billing?source=telegram`,
+        },
+        metadata: {
+          userId: params.userId,
+          purpose: "topup",
+          source: "telegram_bot",
+        },
+        ...(receipt ? { receipt } : {}),
+      },
+      crypto.randomUUID(),
+    );
+
+    await db.payment.create({
+      data: {
+        userId: params.userId,
+        yokassaPaymentId: ykPayment.id,
+        amount,
+        status: "pending",
+        provider: "yokassa",
+        paymentType: "bank_card",
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        description: `${isTest ? "[TEST] " : ""}Пополнение на ${amount} ₽`,
+        metadata: {
+          userId: params.userId,
+          purpose: "topup",
+          source: "telegram_bot",
+        },
+        isTest: ykPayment.test ?? isTest,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing`;
+  }
+
+  if (action === "link_card") {
+    const receipt = await buildYKReceipt(
+      params.userId,
+      1,
+      "Привязка карты lowkey",
+      "full_prepayment",
+    );
+    const ykPayment = await createYKPayment(
+      {
+        amount: { value: "1.00", currency: "RUB" },
+        payment_method_type: "bank_card",
+        capture: true,
+        save_payment_method: true,
+        description: `${isTest ? "[TEST] " : ""}Привязка карты lowkey`,
+        confirmation: {
+          type: "redirect",
+          return_url: `${config.SITE_URL}/me/billing?linked=1`,
+        },
+        metadata: {
+          userId: params.userId,
+          purpose: "link_card",
+          source: "telegram_bot",
+        },
+        ...(receipt ? { receipt } : {}),
+      },
+      crypto.randomUUID(),
+    );
+
+    await db.payment.create({
+      data: {
+        userId: params.userId,
+        yokassaPaymentId: ykPayment.id,
+        amount: 1,
+        status: "pending",
+        provider: "yokassa",
+        paymentType: "link_card",
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        description: `${isTest ? "[TEST] " : ""}Привязка карты`,
+        metadata: {
+          userId: params.userId,
+          purpose: "link_card",
+          source: "telegram_bot",
+        },
+        isTest: ykPayment.test ?? isTest,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?linked=1`;
+  }
+
+  if (action === "promo_subscribe") {
+    const plan = await db.subscriptionPlan.findUnique({
+      where: { slug: params.plan ?? "" },
+    });
+
+    if (!plan || !plan.isActive || !plan.promoActive || plan.promoPrice == null) {
+      throw new Error("Promo is unavailable");
+    }
+
+    const receipt = await buildYKReceipt(
+      params.userId,
+      plan.promoPrice,
+      `Промо-подписка ${plan.name}`,
+      "full_prepayment",
+    );
+    const ykPayment = await createYKPayment(
+      {
+        amount: { value: plan.promoPrice.toFixed(2), currency: "RUB" },
+        payment_method_type: "bank_card",
+        capture: true,
+        save_payment_method: true,
+        description: `${isTest ? "[TEST] " : ""}${plan.promoLabel ?? "Промо"}: ${plan.name}`,
+        confirmation: {
+          type: "redirect",
+          return_url: `${config.SITE_URL}/me/billing?subscribed=1`,
+        },
+        metadata: {
+          userId: params.userId,
+          purpose: "promo_subscribe",
+          planSlug: plan.slug,
+          nextBillingPeriod: "monthly",
+          source: "telegram_bot",
+        },
+        ...(receipt ? { receipt } : {}),
+      },
+      crypto.randomUUID(),
+    );
+
+    await db.payment.create({
+      data: {
+        userId: params.userId,
+        yokassaPaymentId: ykPayment.id,
+        amount: plan.promoPrice,
+        status: "pending",
+        provider: "yokassa",
+        paymentType: "promo_subscribe",
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        description: `${isTest ? "[TEST] " : ""}Промо-подписка "${plan.name}"`,
+        metadata: {
+          userId: params.userId,
+          purpose: "promo_subscribe",
+          planSlug: plan.slug,
+          nextBillingPeriod: "monthly",
+          source: "telegram_bot",
+        },
+        isTest: ykPayment.test ?? isTest,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+  }
+
+  if (action === "subscribe") {
+    const plan = await db.subscriptionPlan.findUnique({
+      where: { slug: params.plan ?? "" },
+    });
+    const period = params.period ?? "monthly";
+
+    if (!plan || !plan.isActive) {
+      throw new Error("Subscription is unavailable");
+    }
+
+    const charge = await getSubscriptionCharge(plan.slug, period, false);
+
+    const user = await db.user.findUnique({
+      where: { id: params.userId },
+      select: { balance: true },
+    });
+    const shortfall = Math.max(0, charge.amount - (user?.balance ?? 0));
+
+    if (shortfall <= 0) {
+      const receipt = await buildYKReceipt(
+        params.userId,
+        1,
+        `Привязка карты для подписки ${plan.name}`,
+        "full_prepayment",
+      );
+      const ykPayment = await createYKPayment(
+        {
+          amount: { value: "1.00", currency: "RUB" },
+          payment_method_type: "bank_card",
+          capture: true,
+          save_payment_method: true,
+          description: `${isTest ? "[TEST] " : ""}Привязка карты для подписки ${plan.name}`,
+          confirmation: {
+            type: "redirect",
+            return_url: `${config.SITE_URL}/me/billing?subscribed=1`,
+          },
+          metadata: {
+            userId: params.userId,
+            purpose: "link_card",
+            subscriptionPlanId: plan.slug,
+            subscriptionPeriod: period,
+            source: "telegram_bot",
+          },
+          ...(receipt ? { receipt } : {}),
+        },
+        crypto.randomUUID(),
+      );
+
+      await db.payment.create({
+        data: {
+          userId: params.userId,
+          yokassaPaymentId: ykPayment.id,
+          amount: 1,
+          status: "pending",
+          provider: "yokassa",
+          paymentType: "link_card",
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          description: `${isTest ? "[TEST] " : ""}Привязка карты для подписки "${plan.name}"`,
+          metadata: {
+            userId: params.userId,
+            purpose: "link_card",
+            subscriptionPlanId: plan.slug,
+            subscriptionPeriod: period,
+            source: "telegram_bot",
+          },
+          isTest: ykPayment.test ?? isTest,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+
+      return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+    }
+
+    const receipt = await buildYKReceipt(
+      params.userId,
+      shortfall,
+      `Доплата для подписки ${plan.name}`,
+      "full_prepayment",
+    );
+    const ykPayment = await createYKPayment(
+      {
+        amount: { value: shortfall.toFixed(2), currency: "RUB" },
+        payment_method_type: "bank_card",
+        capture: true,
+        save_payment_method: true,
+        description: `${isTest ? "[TEST] " : ""}Доплата для подписки ${plan.name}`,
+        confirmation: {
+          type: "redirect",
+          return_url: `${config.SITE_URL}/me/billing?subscribed=1`,
+        },
+        metadata: {
+          userId: params.userId,
+          purpose: "subscription_topup",
+          subscriptionPlanId: plan.slug,
+          subscriptionPeriod: period,
+          source: "telegram_bot",
+        },
+        ...(receipt ? { receipt } : {}),
+      },
+      crypto.randomUUID(),
+    );
+
+    await db.payment.create({
+      data: {
+        userId: params.userId,
+        yokassaPaymentId: ykPayment.id,
+        amount: shortfall,
+        status: "pending",
+        provider: "yokassa",
+        paymentType: "bank_card",
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        description: `${isTest ? "[TEST] " : ""}Доплата ${shortfall} ₽ для подписки "${plan.name}"`,
+        metadata: {
+          userId: params.userId,
+          purpose: "subscription_topup",
+          subscriptionPlanId: plan.slug,
+          subscriptionPeriod: period,
+          source: "telegram_bot",
+        },
+        isTest: ykPayment.test ?? isTest,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+  }
+
+  return null;
 }
 
 /**
@@ -249,7 +569,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   .get(
     "/bot-autologin/:code",
     async ({ params, query, set }) => {
-      const redirectTo = sanitizeBotRedirect(
+      let redirectTo = sanitizeBotRedirect(
         typeof query.redirect === "string" ? query.redirect : null,
       );
 
@@ -288,6 +608,17 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return "<!doctype html><html lang=\"ru\"><body><p>Аккаунт заблокирован.</p></body></html>";
       }
 
+      const paymentRedirect = await createBotPaymentAction({
+        userId: user.id,
+        action: typeof query.action === "string" ? query.action : undefined,
+        amount: typeof query.amount === "string" ? query.amount : undefined,
+        plan: typeof query.plan === "string" ? query.plan : undefined,
+        period: typeof query.period === "string" ? query.period : undefined,
+      });
+      if (paymentRedirect) {
+        redirectTo = paymentRedirect;
+      }
+
       const token = await signJwt({ userId: user.id, isAdmin: Boolean(user.isAdmin) });
       set.headers["content-type"] = "text/html; charset=utf-8";
       return buildBotAutologinHtml(
@@ -302,6 +633,10 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       }),
       query: t.Object({
         redirect: t.Optional(t.String()),
+        action: t.Optional(t.String()),
+        amount: t.Optional(t.String()),
+        plan: t.Optional(t.String()),
+        period: t.Optional(t.String()),
       }),
     },
   )

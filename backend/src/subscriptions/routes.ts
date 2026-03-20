@@ -40,6 +40,8 @@ async function listPublicPlans() {
       promoActive: plan.promoActive,
       promoPrice: plan.promoPrice,
       promoLabel: plan.promoLabel,
+      promoDurationCount: plan.promoDurationCount,
+      promoDurationUnit: plan.promoDurationUnit,
     };
   });
 
@@ -53,6 +55,8 @@ async function listPublicPlans() {
       promoActive: false,
       promoPrice: null,
       promoLabel: "TEST",
+      promoDurationCount: null,
+      promoDurationUnit: null,
     });
   }
 

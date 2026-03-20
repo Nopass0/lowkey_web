@@ -7,7 +7,9 @@ import Elysia, { t } from "elysia";
 import { db } from "../db";
 import { authMiddleware } from "../auth/middleware";
 import { config } from "../config";
+import { sendTelegramMessage } from "../telegram";
 import {
+  activatePromoSubscription,
   autoPurchaseSubscription,
   buildYKReceipt,
   createAutoPayment,
@@ -70,6 +72,40 @@ async function savePaymentMethod(userId: string, method: YKPaymentMethod) {
   });
 }
 
+async function notifyTelegramSubscriptionPurchased(userId: string) {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      telegramId: true,
+      subscription: {
+        select: {
+          planName: true,
+          activeUntil: true,
+          autoRenewal: true,
+        },
+      },
+    },
+  });
+
+  if (!user?.telegramId || !user.subscription) {
+    return;
+  }
+
+  const nextChargeText = user.subscription.autoRenewal
+    ? `Следующее списание: ${user.subscription.activeUntil.toLocaleString("ru-RU")}`
+    : `Подписка активна до: ${user.subscription.activeUntil.toLocaleString("ru-RU")}`;
+
+  await sendTelegramMessage({
+    chatId: user.telegramId.toString(),
+    text:
+      `✅ Подписка "${user.subscription.planName}" оформлена.\n\n${nextChargeText}`,
+    buttonText: "Моя подписка",
+    callbackData: "menu_profile",
+  }).catch((error) => {
+    console.error("[telegram] subscription notification failed", error);
+  });
+}
+
 async function handleCompletedYKPayment(
   paymentId: string,
   ykPayment: YKPaymentResponse,
@@ -87,9 +123,9 @@ async function handleCompletedYKPayment(
   if (purpose === "topup" || purpose === "subscription_topup") {
     await onYKPaymentSuccess(payment.id);
 
+    const shouldAutoRenew = getMetadataValue(payment.metadata, "subscriptionPlanId");
     if (ykPayment.payment_method?.saved) {
       const saved = await savePaymentMethod(payment.userId, ykPayment.payment_method);
-      const shouldAutoRenew = getMetadataValue(payment.metadata, "subscriptionPlanId");
       if (shouldAutoRenew) {
         await db.subscription.updateMany({
           where: { userId: payment.userId },
@@ -101,6 +137,10 @@ async function handleCompletedYKPayment(
           },
         });
       }
+    }
+
+    if (shouldAutoRenew) {
+      await notifyTelegramSubscriptionPurchased(payment.userId);
     }
     return;
   }
@@ -156,25 +196,24 @@ async function handleCompletedYKPayment(
         savedMethodId,
         payment.isTest,
       );
+      await notifyTelegramSubscriptionPurchased(payment.userId);
     }
     return;
   }
 
   if (purpose === "promo_subscribe") {
     const planSlug = getMetadataValue(payment.metadata, "planSlug");
-    const period = getMetadataValue(payment.metadata, "period") ?? "monthly";
     if (planSlug) {
       const saved = ykPayment.payment_method?.saved
         ? await savePaymentMethod(payment.userId, ykPayment.payment_method)
         : null;
 
-      await autoPurchaseSubscription(
-        payment.userId,
+      await activatePromoSubscription({
+        userId: payment.userId,
         planSlug,
-        period,
-        saved?.id ?? null,
-        payment.isTest,
-      );
+        paymentMethodId: saved?.id ?? null,
+        isTest: payment.isTest,
+      });
 
       await db.payment.update({
         where: { id: payment.id },
@@ -183,6 +222,7 @@ async function handleCompletedYKPayment(
           creditedAt: new Date(),
         },
       });
+      await notifyTelegramSubscriptionPurchased(payment.userId);
     }
     return;
   }
@@ -611,7 +651,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
               userId: user.userId,
               purpose: "promo_subscribe",
               planSlug: body.planSlug,
-              period: body.period,
+              nextBillingPeriod: "monthly",
             },
             ...(receipt ? { receipt } : {}),
           },
@@ -632,7 +672,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
               userId: user.userId,
               purpose: "promo_subscribe",
               planSlug: body.planSlug,
-              period: body.period,
+              nextBillingPeriod: "monthly",
             },
             isTest: ykPayment.test ?? isTest,
             expiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -658,7 +698,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
     {
       body: t.Object({
         planSlug: t.String(),
-        period: t.String(),
+        period: t.Optional(t.String()),
       }),
     },
   )

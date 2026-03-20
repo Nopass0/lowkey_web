@@ -300,6 +300,78 @@ export function getRenewalPeriodMs(period: string) {
   return PERIOD_MS[period] ?? PERIOD_MS.monthly;
 }
 
+function getPromoDurationMs(count: number, unit: string) {
+  const safeCount = Math.max(1, Number.isFinite(count) ? count : 1);
+  if (unit === "day") {
+    return safeCount * 24 * 60 * 60 * 1000;
+  }
+  if (unit === "week") {
+    return safeCount * 7 * 24 * 60 * 60 * 1000;
+  }
+  return safeCount * 30 * 24 * 60 * 60 * 1000;
+}
+
+async function grantSubscriptionAccess(params: {
+  userId: string;
+  planSlug: string;
+  planName: string;
+  transactionAmount: number;
+  transactionTitle: string;
+  activeUntil: Date;
+  billingPeriod: string;
+  paymentMethodId?: string | null;
+  isTest: boolean;
+  debitBalance: boolean;
+  incrementPromoUsed?: boolean;
+}) {
+  await db.$transaction(async (tx) => {
+    if (params.debitBalance) {
+      await tx.user.update({
+        where: { id: params.userId },
+        data: { balance: { decrement: params.transactionAmount } },
+      });
+    }
+
+    await tx.transaction.create({
+      data: {
+        userId: params.userId,
+        type: "subscription",
+        amount: -params.transactionAmount,
+        title: `${params.isTest ? "[TEST] " : ""}${params.transactionTitle}`,
+        isTest: params.isTest,
+      },
+    });
+
+    await tx.subscription.upsert({
+      where: { userId: params.userId },
+      update: {
+        planId: params.planSlug,
+        planName: params.planName,
+        activeUntil: params.activeUntil,
+        autoRenewal: Boolean(params.paymentMethodId),
+        billingPeriod: params.billingPeriod,
+        autoRenewPaymentMethodId: params.paymentMethodId ?? null,
+      },
+      create: {
+        userId: params.userId,
+        planId: params.planSlug,
+        planName: params.planName,
+        activeUntil: params.activeUntil,
+        autoRenewal: Boolean(params.paymentMethodId),
+        billingPeriod: params.billingPeriod,
+        autoRenewPaymentMethodId: params.paymentMethodId ?? null,
+      },
+    });
+
+    if (params.incrementPromoUsed) {
+      await tx.subscriptionPlan.updateMany({
+        where: { slug: params.planSlug },
+        data: { promoUsed: { increment: 1 } },
+      });
+    }
+  });
+}
+
 export async function getSubscriptionCharge(
   planSlug: string,
   period: string,
@@ -479,6 +551,65 @@ export async function autoPurchaseSubscription(
         autoRenewPaymentMethodId: paymentMethodId ?? null,
       },
     });
+  });
+}
+
+export async function activatePromoSubscription(params: {
+  userId: string;
+  planSlug: string;
+  paymentMethodId?: string | null;
+  isTest: boolean;
+}) {
+  const plan = await db.subscriptionPlan.findFirst({
+    where: { slug: params.planSlug, isActive: true, promoActive: true },
+    select: {
+      slug: true,
+      name: true,
+      promoPrice: true,
+      promoDurationCount: true,
+      promoDurationUnit: true,
+      promoMaxUses: true,
+      promoUsed: true,
+    },
+  });
+
+  if (!plan || plan.promoPrice == null) {
+    throw new Error("Promo plan not found");
+  }
+
+  if (plan.promoMaxUses != null && plan.promoUsed >= plan.promoMaxUses) {
+    throw new Error("Promo is no longer available");
+  }
+
+  const now = new Date();
+  const currentSubscription = await db.subscription.findUnique({
+    where: { userId: params.userId },
+    select: { activeUntil: true },
+  });
+  const base =
+    currentSubscription?.activeUntil && currentSubscription.activeUntil > now
+      ? currentSubscription.activeUntil
+      : now;
+  const activeUntil = new Date(
+    base.getTime() +
+      getPromoDurationMs(
+        plan.promoDurationCount ?? 1,
+        plan.promoDurationUnit ?? "month",
+      ),
+  );
+
+  await grantSubscriptionAccess({
+    userId: params.userId,
+    planSlug: plan.slug,
+    planName: plan.name,
+    transactionAmount: plan.promoPrice,
+    transactionTitle: `РђРєС†РёСЏ "${plan.name}"`,
+    activeUntil,
+    billingPeriod: "monthly",
+    paymentMethodId: params.paymentMethodId,
+    isTest: params.isTest,
+    debitBalance: false,
+    incrementPromoUsed: true,
   });
 }
 

@@ -89,6 +89,8 @@ model SubscriptionPlan {
   promoActive     Boolean             @default(false)
   promoPrice      Float?
   promoLabel      String?
+  promoDurationCount Int?             @default(1)
+  promoDurationUnit  String?          @default("month")
   promoMaxUses    Int?
   promoUsed       Int                 @default(0)
   createdAt       DateTime            @default(now())

@@ -6,6 +6,7 @@ interface TelegramMessageParams {
   text: string;
   buttonText?: string | null;
   buttonUrl?: string | null;
+  callbackData?: string | null;
 }
 
 function escapeHtml(value: string): string {
@@ -56,6 +57,7 @@ export async function sendTelegramMessage(
     text,
     buttonText,
     buttonUrl,
+    callbackData,
   } = params;
 
   if (!botToken) {
@@ -72,9 +74,13 @@ export async function sendTelegramMessage(
         text,
         parse_mode: "HTML",
         reply_markup:
-          buttonText && buttonUrl
+          buttonText && (buttonUrl || callbackData)
             ? {
-                inline_keyboard: [[{ text: buttonText, url: buttonUrl }]],
+                inline_keyboard: [[
+                  buttonUrl
+                    ? { text: buttonText, url: buttonUrl }
+                    : { text: buttonText, callback_data: callbackData },
+                ]],
               }
             : undefined,
       }),

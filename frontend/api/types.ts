@@ -177,6 +177,8 @@ export interface SubscriptionPlan {
   promoActive?: boolean;
   promoPrice?: number | null;
   promoLabel?: string | null;
+  promoDurationCount?: number | null;
+  promoDurationUnit?: string | null;
 }
 
 /** Saved payment method (card) */

@@ -61,6 +61,20 @@ const PERIODS = [
 
 type Period = (typeof PERIODS)[number]["value"];
 
+function formatPromoDuration(
+  count: number | null | undefined,
+  unit: string | null | undefined,
+) {
+  const safeCount = count && count > 0 ? count : 1;
+  if (unit === "day") {
+    return safeCount === 1 ? "1 день" : `${safeCount} дн.`;
+  }
+  if (unit === "week") {
+    return safeCount === 1 ? "1 неделю" : `${safeCount} нед.`;
+  }
+  return safeCount === 1 ? "1 месяц" : `${safeCount} мес.`;
+}
+
 const PAYMENT_TYPE_META: Record<
   YKPaymentType,
   { label: string; icon: React.ReactNode; color: string }
@@ -1135,6 +1149,11 @@ export default function BillingPage() {
                     plan.promoActive &&
                     plan.promoPrice != null &&
                     period === "monthly";
+                  const promoDurationLabel = formatPromoDuration(
+                    plan.promoDurationCount,
+                    plan.promoDurationUnit,
+                  );
+                  const monthlyRenewalPrice = plan.prices["monthly"] ?? monthly;
 
                   return (
                     <motion.div
@@ -1193,6 +1212,11 @@ export default function BillingPage() {
                               {monthly} ₽/мес
                             </div>
                           )}
+                          {hasPromo && plan.promoPrice != null && (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              На {promoDurationLabel}, далее {monthlyRenewalPrice} ₽/мес
+                            </div>
+                          )}
                         </CardHeader>
 
                         <CardContent className="flex-1 pt-5 pb-4 px-5">
@@ -1234,15 +1258,13 @@ export default function BillingPage() {
                             onClick={() =>
                               handleSubscribe(
                                 plan.id,
-                                hasPromo && plan.promoPrice != null
-                                  ? plan.promoPrice
-                                  : totalCost,
+                                totalCost,
                               )
                             }
                           >
                             {canAfford
                               ? "Купить тариф"
-                              : `Пополнить на ${(hasPromo && plan.promoPrice != null ? plan.promoPrice : totalCost) - profile.balance} ₽`}
+                              : `Пополнить на ${totalCost - profile.balance} ₽`}
                           </Button>
 
                           {/* Promo subscribe button */}
@@ -1253,7 +1275,7 @@ export default function BillingPage() {
                               onClick={() => handlePromoSubscribe(plan.id)}
                             >
                               <Tag className="w-3.5 h-3.5 mr-1.5" />
-                              Промо — оплатить картой
+                              Оформить за {plan.promoPrice} ₽
                             </Button>
                           )}
                         </CardFooter>
