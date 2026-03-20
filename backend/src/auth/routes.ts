@@ -74,10 +74,24 @@ function sanitizeBotRedirect(target?: string | null): string {
   }
 }
 
+const BOT_PENDING_PAYMENT_STORAGE_KEY = "lowkey.pending_yk_payment";
+
+interface BotPendingPayment {
+  paymentId: string;
+  confirmationUrl: string | null;
+  amount: number;
+}
+
+interface BotPaymentRedirect {
+  redirectTo: string;
+  pendingPayment?: BotPendingPayment | null;
+}
+
 function buildBotAutologinHtml(
   token: string,
   user: { id: string; login: string; isAdmin: boolean },
   redirectTo: string,
+  pendingPayment?: BotPendingPayment | null,
 ): string {
   const payload = JSON.stringify({
     state: {
@@ -97,6 +111,8 @@ function buildBotAutologinHtml(
     storageKey: "lowkey-auth",
     payload,
     redirectTo,
+    pendingPaymentStorageKey: BOT_PENDING_PAYMENT_STORAGE_KEY,
+    pendingPayment: pendingPayment ?? null,
   });
 
   return `<!doctype html>
@@ -114,6 +130,14 @@ function buildBotAutologinHtml(
         try {
           localStorage.setItem(data.storageKey, data.payload);
         } catch {}
+        try {
+          if (data.pendingPayment) {
+            sessionStorage.setItem(
+              data.pendingPaymentStorageKey,
+              JSON.stringify(data.pendingPayment),
+            );
+          }
+        } catch {}
         window.location.replace(data.redirectTo);
       })();
     </script>
@@ -127,7 +151,7 @@ async function createBotPaymentAction(params: {
   amount?: string;
   plan?: string;
   period?: string;
-}) {
+}): Promise<BotPaymentRedirect | null> {
   const action = params.action ?? "";
   if (!action) {
     return null;
@@ -168,7 +192,7 @@ async function createBotPaymentAction(params: {
       crypto.randomUUID(),
     );
 
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         userId: params.userId,
         yokassaPaymentId: ykPayment.id,
@@ -188,7 +212,14 @@ async function createBotPaymentAction(params: {
       },
     });
 
-    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing`;
+    return {
+      redirectTo: ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing`,
+      pendingPayment: {
+        paymentId: payment.id,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        amount,
+      },
+    };
   }
 
   if (action === "link_card") {
@@ -219,7 +250,7 @@ async function createBotPaymentAction(params: {
       crypto.randomUUID(),
     );
 
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         userId: params.userId,
         yokassaPaymentId: ykPayment.id,
@@ -239,7 +270,15 @@ async function createBotPaymentAction(params: {
       },
     });
 
-    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?linked=1`;
+    return {
+      redirectTo:
+        ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?linked=1`,
+      pendingPayment: {
+        paymentId: payment.id,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        amount: 1,
+      },
+    };
   }
 
   if (action === "promo_subscribe") {
@@ -280,7 +319,7 @@ async function createBotPaymentAction(params: {
       crypto.randomUUID(),
     );
 
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         userId: params.userId,
         yokassaPaymentId: ykPayment.id,
@@ -302,7 +341,15 @@ async function createBotPaymentAction(params: {
       },
     });
 
-    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+    return {
+      redirectTo:
+        ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`,
+      pendingPayment: {
+        paymentId: payment.id,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        amount: plan.promoPrice,
+      },
+    };
   }
 
   if (action === "subscribe") {
@@ -353,7 +400,7 @@ async function createBotPaymentAction(params: {
         crypto.randomUUID(),
       );
 
-      await db.payment.create({
+      const payment = await db.payment.create({
         data: {
           userId: params.userId,
           yokassaPaymentId: ykPayment.id,
@@ -375,7 +422,15 @@ async function createBotPaymentAction(params: {
         },
       });
 
-      return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+      return {
+        redirectTo:
+          ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`,
+        pendingPayment: {
+          paymentId: payment.id,
+          confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+          amount: 1,
+        },
+      };
     }
 
     const receipt = await buildYKReceipt(
@@ -407,7 +462,7 @@ async function createBotPaymentAction(params: {
       crypto.randomUUID(),
     );
 
-    await db.payment.create({
+    const payment = await db.payment.create({
       data: {
         userId: params.userId,
         yokassaPaymentId: ykPayment.id,
@@ -429,7 +484,15 @@ async function createBotPaymentAction(params: {
       },
     });
 
-    return ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`;
+    return {
+      redirectTo:
+        ykPayment.confirmation?.confirmation_url ?? `${config.SITE_URL}/me/billing?subscribed=1`,
+      pendingPayment: {
+        paymentId: payment.id,
+        confirmationUrl: ykPayment.confirmation?.confirmation_url ?? null,
+        amount: shortfall,
+      },
+    };
   }
 
   return null;
@@ -615,8 +678,10 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         plan: typeof query.plan === "string" ? query.plan : undefined,
         period: typeof query.period === "string" ? query.period : undefined,
       });
+      let pendingPayment: BotPendingPayment | null = null;
       if (paymentRedirect) {
-        redirectTo = paymentRedirect;
+        redirectTo = paymentRedirect.redirectTo;
+        pendingPayment = paymentRedirect.pendingPayment ?? null;
       }
 
       const token = await signJwt({ userId: user.id, isAdmin: Boolean(user.isAdmin) });
@@ -625,6 +690,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         token,
         { id: user.id, login: user.login, isAdmin: Boolean(user.isAdmin) },
         redirectTo,
+        pendingPayment,
       );
     },
     {
