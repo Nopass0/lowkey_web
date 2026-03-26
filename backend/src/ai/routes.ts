@@ -22,6 +22,30 @@ interface FileMeta {
   kind: string;
 }
 
+interface ConversationMessageRow {
+  id: string;
+  role: string;
+  content: string;
+  reasoning?: string | null;
+  attachments?: unknown;
+  artifacts?: unknown;
+  toolEvents?: unknown;
+  model?: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  createdAt: Date;
+}
+
+interface ConversationFileRow {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  blobUrl: string;
+  kind: string;
+  createdAt: Date;
+}
+
 function isEmbeddingModel(model: string | null | undefined) {
   const value = String(model || "").toLowerCase();
   return value.includes("embed") || value.includes("embedding");
@@ -833,7 +857,7 @@ export const aiRoutes = new Elysia()
           model: conversation.model,
           createdAt: conversation.createdAt.toISOString(),
           updatedAt: conversation.updatedAt.toISOString(),
-          messages: conversation.messages.map((message) => ({
+          messages: conversation.messages.map((message: ConversationMessageRow) => ({
             id: message.id,
             role: message.role,
             content: message.content,
@@ -847,7 +871,7 @@ export const aiRoutes = new Elysia()
             totalTokens: message.totalTokens,
             createdAt: message.createdAt.toISOString(),
           })),
-          files: conversation.files.map((file) => ({
+          files: conversation.files.map((file: ConversationFileRow) => ({
             id: file.id,
             fileName: file.fileName,
             mimeType: file.mimeType,

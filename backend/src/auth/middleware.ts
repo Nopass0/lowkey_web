@@ -16,7 +16,7 @@ import { redis } from "../redis";
  * Adds `user` object to the context with `userId` and `isAdmin`.
  */
 export const authMiddleware = new Elysia({ name: "auth" }).derive(
-  { as: "global" },
+  { as: "scoped" },
   async ({ headers, set }) => {
     const token = headers.authorization?.replace("Bearer ", "");
     if (!token) {
@@ -54,7 +54,7 @@ export const authMiddleware = new Elysia({ name: "auth" }).derive(
  */
 export const adminMiddleware = new Elysia({ name: "admin-auth" })
   .use(authMiddleware)
-  .derive({ as: "global" }, async ({ user, set }) => {
+  .derive({ as: "scoped" }, async ({ user, set }) => {
     if (!user || !user.isAdmin) {
       set.status = 403;
       throw new Error("Forbidden");

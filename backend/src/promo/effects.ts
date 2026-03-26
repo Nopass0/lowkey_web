@@ -1,3 +1,5 @@
+import type { PrismaLikeClient } from "../db";
+
 /**
  * @fileoverview Promo code effect appliers.
  * Each effect type modifies user state (balance, subscription, etc.)
@@ -26,7 +28,10 @@ export interface PromoEffect {
 export async function applyEffects(
   userId: string,
   effects: PromoEffect[],
-  tx: any,
+  tx: Pick<
+    PrismaLikeClient,
+    "user" | "subscription" | "transaction"
+  >,
 ): Promise<string> {
   const descriptions: string[] = [];
 

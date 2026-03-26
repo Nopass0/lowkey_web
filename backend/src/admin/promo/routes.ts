@@ -272,7 +272,9 @@ export const adminPromoRoutes = new Elysia({ prefix: "/admin/promo" })
         }
 
         const activations = promo.activations;
-        const uniqueUsers = new Set(activations.map((a) => a.userId)).size;
+        const uniqueUsers = new Set(
+          activations.map((a: { userId: string }) => a.userId),
+        ).size;
 
         // Calculate total balance awarded from add_balance effects
         const effects = promo.effects as any[];

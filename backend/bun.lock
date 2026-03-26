@@ -7,17 +7,18 @@
       "dependencies": {
         "@elysiajs/cors": "^1.3.1",
         "@elysiajs/swagger": "^1.3.1",
-        "@prisma/client": "^6.5.0",
         "@vercel/blob": "^1.1.1",
+        "@voiddb/orm": "^1.2.3",
         "bcryptjs": "^3.0.2",
         "elysia": "^1.3.1",
-        "ioredis": "^5.6.1",
         "jose": "^6.0.11",
         "tochka-sbp": "^1.0.0",
       },
       "devDependencies": {
+        "@prisma/client": "^6.5.0",
         "@types/bcryptjs": "^3.0.0",
         "bun-types": "latest",
+        "ioredis": "^5.6.1",
         "prisma": "^6.5.0",
         "typescript": "^5.8.2",
       },
@@ -69,6 +70,8 @@
     "@unhead/schema": ["@unhead/schema@1.11.20", "", { "dependencies": { "hookable": "^5.5.3", "zhead": "^2.2.4" } }, "sha512-0zWykKAaJdm+/Y7yi/Yds20PrUK7XabLe9c3IRcjnwYmSWY6z0Cr19VIs3ozCj8P+GhR+/TI2mwtGlueCEYouA=="],
 
     "@vercel/blob": ["@vercel/blob@1.1.1", "", { "dependencies": { "async-retry": "^1.3.3", "is-buffer": "^2.0.5", "is-node-process": "^1.2.0", "throttleit": "^2.1.0", "undici": "^5.28.4" } }, "sha512-heiJGj2qt5qTv6yiShH9f6KRAoZGj+lz61GQ+lBRL4lhvUmKI9A51KYlQTnsUd9ymdFlKHBlvmPeG+yGz2Qsbg=="],
+
+    "@voiddb/orm": ["@voiddb/orm@1.2.3", "", { "dependencies": { "axios": "^1.7.7" }, "peerDependencies": { "typescript": ">=4.7" }, "bin": { "voiddb-orm": "scripts/cli.mjs", "vdb": "scripts/cli.mjs", "voiddb-generate": "scripts/cli.mjs", "vdb-gen": "scripts/cli.mjs", "voiddb-schema": "scripts/cli.mjs", "vdb-schema": "scripts/cli.mjs", "voiddb-migrate": "scripts/cli.mjs", "vdb-migrate": "scripts/cli.mjs" } }, "sha512-U+eLDbrCQB/+VWJ/enO347XJxBCdWbzBlzIYLavR9Ke8/Qbj6MShgMhpK+H21BwhIKvKve1HBTr2knqBs8R8DQ=="],
 
     "async-retry": ["async-retry@1.3.3", "", { "dependencies": { "retry": "0.13.1" } }, "sha512-wfr/jstw9xNi/0teMHrRW7dsz3Lt5ARhYNZ2ewpadnhaIp5mbALhOAP+EAdsC7t4Z6wqsDVv9+W6gm1Dk9mEyw=="],
 
@@ -162,7 +165,7 @@
 
     "ieee754": ["ieee754@1.2.1", "", {}, "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="],
 
-    "ioredis": ["ioredis@5.10.0", "", { "dependencies": { "@ioredis/commands": "1.5.1", "cluster-key-slot": "^1.1.0", "debug": "^4.3.4", "denque": "^2.1.0", "lodash.defaults": "^4.2.0", "lodash.isarguments": "^3.1.0", "redis-errors": "^1.2.0", "redis-parser": "^3.0.0", "standard-as-callback": "^2.1.0" } }, "sha512-HVBe9OFuqs+Z6n64q09PQvP1/R4Bm+30PAyyD4wIEqssh3v9L21QjCVk4kRLucMBcDokJTcLjsGeVRlq/nH6DA=="],
+    "ioredis": ["ioredis@5.10.1", "", { "dependencies": { "@ioredis/commands": "1.5.1", "cluster-key-slot": "^1.1.0", "debug": "^4.3.4", "denque": "^2.1.0", "lodash.defaults": "^4.2.0", "lodash.isarguments": "^3.1.0", "redis-errors": "^1.2.0", "redis-parser": "^3.0.0", "standard-as-callback": "^2.1.0" } }, "sha512-HuEDBTI70aYdx1v6U97SbNx9F1+svQKBDo30o0b9fw055LMepzpOOd0Ccg9Q6tbqmBSJaMuY0fB7yw9/vjBYCA=="],
 
     "is-buffer": ["is-buffer@2.0.5", "", {}, "sha512-i2R6zNFDwgEHJyQUtJEk0XFi1i0dPFn/oqjK3/vPCcDeJvW5NQ83V8QbicfF1SupOaB0h8ntgBC2YiE7dfyctQ=="],
 

@@ -110,7 +110,10 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
 
       const priceItem = isTestSubscription
         ? { price: 10 }
-        : plan?.prices.find((item) => item.period === body.period);
+        : plan?.prices.find(
+            (item: { period: string; price: number }) =>
+              item.period === body.period,
+          );
 
       if (!priceItem) {
         set.status = 400;

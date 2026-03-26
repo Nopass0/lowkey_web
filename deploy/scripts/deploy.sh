@@ -21,6 +21,12 @@ require_backend_env() {
   [[ -n "${value}" ]]
 }
 
+has_voiddb_auth() {
+  [[ -n "${VOIDDB_TOKEN:-}" ]] || {
+    [[ -n "${VOIDDB_USERNAME:-}" ]] && [[ -n "${VOIDDB_PASSWORD:-}" ]]
+  }
+}
+
 render_template() {
   local template_path="$1"
   local target_path="$2"
@@ -126,8 +132,8 @@ EOF
 write_backend_env_file() {
   local backend_tmp
 
-  if ! require_backend_env DATABASE_URL ||
-    ! require_backend_env REDIS_URL ||
+  if ! require_backend_env VOIDDB_URL ||
+    ! has_voiddb_auth ||
     ! require_backend_env JWT_SECRET ||
     ! require_backend_env JWT_EXPIRY ||
     ! require_backend_env ADMIN_LOGIN ||
@@ -148,8 +154,12 @@ write_backend_env_file() {
   backend_tmp="$(mktemp)"
 
   cat > "${backend_tmp}" <<EOF
-DATABASE_URL=${DATABASE_URL}
-REDIS_URL=${REDIS_URL}
+VOIDDB_URL=${VOIDDB_URL}
+VOIDDB_USERNAME=${VOIDDB_USERNAME:-}
+VOIDDB_PASSWORD=${VOIDDB_PASSWORD:-}
+VOIDDB_TOKEN=${VOIDDB_TOKEN:-}
+LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL:-}
+LEGACY_REDIS_URL=${LEGACY_REDIS_URL:-}
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRY=${JWT_EXPIRY}
 ADMIN_LOGIN=${ADMIN_LOGIN}

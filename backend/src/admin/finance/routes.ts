@@ -573,7 +573,7 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
 
   .post(
     "/withdrawals",
-    async ({ body, user, set }) => {
+    async ({ body, adminUser, set }) => {
       try {
         if (body.amount <= 0) {
           set.status = 400;
@@ -586,7 +586,7 @@ export const adminFinanceRoutes = new Elysia({ prefix: "/admin/finance" })
             note: body.note?.trim() || null,
             amount: roundMoney(body.amount),
             withdrawalDate: parseDateStart(body.withdrawalDate),
-            createdById: user.userId,
+            createdById: adminUser.userId,
           },
           include: {
             createdBy: {

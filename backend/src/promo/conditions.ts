@@ -4,7 +4,7 @@
  * whether the user meets the requirement for a promo code.
  */
 
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaLikeClient } from "../db";
 
 /** Shape of a promo condition from the JSON field */
 export interface PromoCondition {
@@ -26,7 +26,10 @@ export async function checkConditions(
   userId: string,
   conditions: PromoCondition[],
   promoCodeId: string,
-  db: PrismaClient | any,
+  db: Pick<
+    PrismaLikeClient,
+    "promoActivation" | "subscription" | "transaction"
+  >,
 ): Promise<{ ok: boolean; reason?: string }> {
   for (const cond of conditions) {
     switch (cond.key) {

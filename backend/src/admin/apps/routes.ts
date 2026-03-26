@@ -127,17 +127,18 @@ export const adminAppRoutes = new Elysia({ prefix: "/admin/apps" })
           return { message: "Release not found" };
         }
 
-        // Reset isLatest for all releases of this platform, then set this one
-        await db.$transaction([
-          db.appRelease.updateMany({
+        // Reset isLatest for all releases of this platform, then set this one.
+        // Use callback form so the VoidDB adapter can preserve sequencing.
+        await db.$transaction(async (tx) => {
+          await tx.appRelease.updateMany({
             where: { platform: release.platform },
             data: { isLatest: false },
-          }),
-          db.appRelease.update({
+          });
+          await tx.appRelease.update({
             where: { id: params.id },
             data: { isLatest: true },
-          }),
-        ]);
+          });
+        });
 
         const updated = await db.appRelease.findUnique({
           where: { id: params.id },

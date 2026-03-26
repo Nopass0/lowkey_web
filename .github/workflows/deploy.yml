@@ -19,8 +19,12 @@ jobs:
       N8N_BIND_PORT: ${{ github.ref_name == 'main' && '5678' || '6678' }}
       NEXT_PUBLIC_API_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su/api' || 'https://dev.lowkey.su/api' }}
       NEXT_PUBLIC_SITE_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su' || 'https://dev.lowkey.su' }}
-      DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
-      REDIS_URL: ${{ secrets.REDIS_URL }}
+      VOIDDB_URL: https://db.lowkey.su
+      VOIDDB_USERNAME: admin
+      VOIDDB_PASSWORD: ${{ secrets.VOIDDB_PASSWORD }}
+      VOIDDB_TOKEN: ${{ secrets.VOIDDB_TOKEN }}
+      LEGACY_DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
+      LEGACY_REDIS_URL: ${{ secrets.REDIS_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       JWT_EXPIRY: ${{ secrets.JWT_EXPIRY }}
       ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN }}
@@ -65,8 +69,12 @@ jobs:
           EOF
 
           cat > .env.backend <<EOF
-          DATABASE_URL=${DATABASE_URL}
-          REDIS_URL=${REDIS_URL}
+          VOIDDB_URL=${VOIDDB_URL}
+          VOIDDB_USERNAME=${VOIDDB_USERNAME}
+          VOIDDB_PASSWORD=${VOIDDB_PASSWORD}
+          VOIDDB_TOKEN=${VOIDDB_TOKEN}
+          LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL}
+          LEGACY_REDIS_URL=${LEGACY_REDIS_URL}
           JWT_SECRET=${JWT_SECRET}
           JWT_EXPIRY=${JWT_EXPIRY}
           ADMIN_LOGIN=${ADMIN_LOGIN}
@@ -153,8 +161,12 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ env.NEXT_PUBLIC_SITE_URL }}
           REMOTE_BASE: ${{ env.REMOTE_BASE }}
           LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          REDIS_URL: ${{ env.REDIS_URL }}
+          VOIDDB_URL: ${{ env.VOIDDB_URL }}
+          VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
+          VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
+          VOIDDB_TOKEN: ${{ env.VOIDDB_TOKEN }}
+          LEGACY_DATABASE_URL: ${{ env.LEGACY_DATABASE_URL }}
+          LEGACY_REDIS_URL: ${{ env.LEGACY_REDIS_URL }}
           JWT_SECRET: ${{ env.JWT_SECRET }}
           JWT_EXPIRY: ${{ env.JWT_EXPIRY }}
           ADMIN_LOGIN: ${{ env.ADMIN_LOGIN }}
@@ -197,8 +209,12 @@ jobs:
              NEXT_PUBLIC_API_URL='${NEXT_PUBLIC_API_URL}' \
              NEXT_PUBLIC_SITE_URL='${NEXT_PUBLIC_SITE_URL}' \
              LETSENCRYPT_EMAIL='${LETSENCRYPT_EMAIL}' \
-             DATABASE_URL='${DATABASE_URL}' \
-             REDIS_URL='${REDIS_URL}' \
+             VOIDDB_URL='${VOIDDB_URL}' \
+             VOIDDB_USERNAME='${VOIDDB_USERNAME}' \
+             VOIDDB_PASSWORD='${VOIDDB_PASSWORD}' \
+             VOIDDB_TOKEN='${VOIDDB_TOKEN}' \
+             LEGACY_DATABASE_URL='${LEGACY_DATABASE_URL}' \
+             LEGACY_REDIS_URL='${LEGACY_REDIS_URL}' \
              JWT_SECRET='${JWT_SECRET}' \
              JWT_EXPIRY='${JWT_EXPIRY}' \
              ADMIN_LOGIN='${ADMIN_LOGIN}' \

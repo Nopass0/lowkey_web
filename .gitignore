@@ -18,3 +18,4 @@
 /.env.backend
 /.env.compose
 /deploy/runtime/
+/.claude/worktrees/

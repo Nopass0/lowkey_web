@@ -396,6 +396,7 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
   )
   .post("/link-card", async ({ user, body, set }) => {
     try {
+      const { subscriptionPlanId, subscriptionPeriod } = body ?? {};
       const isTest = await isYKTestMode();
       const receipt = await buildYKReceipt(
         user.userId,
@@ -417,10 +418,10 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
           metadata: {
             userId: user.userId,
             purpose: "link_card",
-            ...(body.subscriptionPlanId
+            ...(subscriptionPlanId
               ? {
-                  subscriptionPlanId: body.subscriptionPlanId,
-                  subscriptionPeriod: body.subscriptionPeriod ?? "monthly",
+                  subscriptionPlanId,
+                  subscriptionPeriod: subscriptionPeriod ?? "monthly",
                 }
               : {}),
           },
@@ -442,10 +443,10 @@ export const yokassaPaymentRoutes = new Elysia({ prefix: "/yokassa" })
           metadata: {
             userId: user.userId,
             purpose: "link_card",
-            ...(body.subscriptionPlanId
+            ...(subscriptionPlanId
               ? {
-                  subscriptionPlanId: body.subscriptionPlanId,
-                  subscriptionPeriod: body.subscriptionPeriod ?? "monthly",
+                  subscriptionPlanId,
+                  subscriptionPeriod: subscriptionPeriod ?? "monthly",
                 }
               : {}),
           },

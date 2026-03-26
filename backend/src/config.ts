@@ -5,12 +5,17 @@
 
 /** Application configuration object */
 export const config = {
-  /** PostgreSQL connection string */
-  DATABASE_URL:
-    process.env.DATABASE_URL ?? "postgresql://user:pass@localhost:5432/lowkey",
+  /** Legacy PostgreSQL connection string used only by import tooling */
+  LEGACY_DATABASE_URL:
+    process.env.LEGACY_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    "postgresql://user:pass@localhost:5432/lowkey",
 
-  /** Redis connection string */
-  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
+  /** Legacy Redis connection string used only by import tooling */
+  LEGACY_REDIS_URL:
+    process.env.LEGACY_REDIS_URL ??
+    process.env.REDIS_URL ??
+    "redis://localhost:6379",
 
   /** Secret key for signing JWTs (min 32 chars) */
   JWT_SECRET:

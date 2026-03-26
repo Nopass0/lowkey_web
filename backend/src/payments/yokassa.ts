@@ -390,7 +390,9 @@ export async function getSubscriptionCharge(
     throw new Error("Plan not found");
   }
 
-  const priceItem = plan.prices.find((item) => item.period === period);
+  const priceItem = plan.prices.find(
+    (item: { period: string; price: number }) => item.period === period,
+  );
   if (!priceItem) {
     throw new Error("Invalid billing period");
   }
