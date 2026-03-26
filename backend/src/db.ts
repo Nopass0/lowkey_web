@@ -658,6 +658,10 @@ function withCreateDefaults(model: ModelName, data: AnyRecord): AnyRecord {
   const now = new Date();
   const defaults: AnyRecord = {};
 
+  if (data.id == null) {
+    defaults.id = crypto.randomUUID();
+  }
+
   switch (model) {
     case "user":
       Object.assign(defaults, {
