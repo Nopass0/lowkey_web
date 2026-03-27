@@ -26,6 +26,7 @@ jobs:
       LEGACY_DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
       LEGACY_REDIS_URL: ${{ secrets.REDIS_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      BACKEND_SECRET: ${{ secrets.BACKEND_SECRET }}
       JWT_EXPIRY: ${{ secrets.JWT_EXPIRY }}
       ADMIN_LOGIN: ${{ secrets.ADMIN_LOGIN }}
       ADMIN_JWT_EXPIRY: ${{ secrets.ADMIN_JWT_EXPIRY }}
@@ -66,6 +67,7 @@ jobs:
           GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+          LETSENCRYPT_ROOT_DIR=/etc/letsencrypt
           EOF
 
           cat > .env.backend <<EOF
@@ -73,6 +75,8 @@ jobs:
           VOIDDB_USERNAME=${VOIDDB_USERNAME}
           VOIDDB_PASSWORD=${VOIDDB_PASSWORD}
           VOIDDB_TOKEN=${VOIDDB_TOKEN}
+          BACKEND_SECRET=${BACKEND_SECRET}
+          LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
           LEGACY_DATABASE_URL=${LEGACY_DATABASE_URL}
           LEGACY_REDIS_URL=${LEGACY_REDIS_URL}
           JWT_SECRET=${JWT_SECRET}
@@ -165,6 +169,7 @@ jobs:
           VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
           VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
           VOIDDB_TOKEN: ${{ env.VOIDDB_TOKEN }}
+          BACKEND_SECRET: ${{ env.BACKEND_SECRET }}
           LEGACY_DATABASE_URL: ${{ env.LEGACY_DATABASE_URL }}
           LEGACY_REDIS_URL: ${{ env.LEGACY_REDIS_URL }}
           JWT_SECRET: ${{ env.JWT_SECRET }}
@@ -213,6 +218,7 @@ jobs:
              VOIDDB_USERNAME='${VOIDDB_USERNAME}' \
              VOIDDB_PASSWORD='${VOIDDB_PASSWORD}' \
              VOIDDB_TOKEN='${VOIDDB_TOKEN}' \
+             BACKEND_SECRET='${BACKEND_SECRET}' \
              LEGACY_DATABASE_URL='${LEGACY_DATABASE_URL}' \
              LEGACY_REDIS_URL='${LEGACY_REDIS_URL}' \
              JWT_SECRET='${JWT_SECRET}' \

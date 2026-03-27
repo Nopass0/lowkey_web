@@ -6,6 +6,7 @@
 import Elysia, { t } from "elysia";
 import { X509Certificate, randomUUID } from "crypto";
 import { readFile } from "fs/promises";
+import { URL } from "url";
 import { db } from "../db";
 import { authMiddleware } from "../auth/middleware";
 import { config } from "../config";
@@ -52,6 +53,7 @@ async function loadVpnTLSMaterial() {
     return {
       certPem: config.VPN_TLS_CERT_PEM,
       keyPem: config.VPN_TLS_KEY_PEM,
+      source: "env",
     };
   }
 
@@ -60,7 +62,11 @@ async function loadVpnTLSMaterial() {
       readFile(config.VPN_TLS_CERT_FILE, "utf8"),
       readFile(config.VPN_TLS_KEY_FILE, "utf8"),
     ]);
-    return { certPem, keyPem };
+    return { certPem, keyPem, source: "file" };
+  }
+
+  if (config.LETSENCRYPT_EMAIL) {
+    return loadVpnLetsEncryptMaterial();
   }
 
   return null;
@@ -68,6 +74,53 @@ async function loadVpnTLSMaterial() {
 
 function normalizeHostname(hostname: string) {
   return hostname.trim().toLowerCase().replace(/\.$/, "");
+}
+
+function getVpnTLSCertNameCandidates() {
+  const candidates = new Set<string>();
+
+  if (config.VPN_TLS_CERT_NAME) {
+    candidates.add(normalizeHostname(config.VPN_TLS_CERT_NAME));
+  }
+
+  try {
+    candidates.add(normalizeHostname(new URL(config.SITE_URL).hostname));
+  } catch {
+    if (config.SITE_URL) {
+      candidates.add(normalizeHostname(config.SITE_URL));
+    }
+  }
+
+  const suffix = normalizeHostname(config.VPN_TLS_ALLOWED_SUFFIX.replace(/^\./, ""));
+  if (suffix) {
+    candidates.add(suffix);
+  }
+
+  return [...candidates].filter(Boolean);
+}
+
+async function loadVpnLetsEncryptMaterial() {
+  for (const certName of getVpnTLSCertNameCandidates()) {
+    const certPath = `${config.VPN_TLS_CERTBOT_DIR}/${certName}/fullchain.pem`;
+    const keyPath = `${config.VPN_TLS_CERTBOT_DIR}/${certName}/privkey.pem`;
+
+    try {
+      const [certPem, keyPem] = await Promise.all([
+        readFile(certPath, "utf8"),
+        readFile(keyPath, "utf8"),
+      ]);
+
+      return {
+        certPem,
+        keyPem,
+        source: "letsencrypt",
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 function isAllowedTLSHostname(hostname: string) {
@@ -177,8 +230,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
           hostname,
           certPem: material.certPem,
           keyPem: material.keyPem,
-          source:
-            config.VPN_TLS_CERT_PEM && config.VPN_TLS_KEY_PEM ? "env" : "file",
+          source: material.source,
         };
       } catch (error) {
         console.error("[ServerTLSMaterial] error:", error);

@@ -24,6 +24,9 @@ export const config = {
   /** Shared secret used by VPN nodes for /servers/* write endpoints */
   BACKEND_SECRET: process.env.BACKEND_SECRET ?? "",
 
+  /** Email used by deploy-time Let's Encrypt issuance on the main site server */
+  LETSENCRYPT_EMAIL: process.env.LETSENCRYPT_EMAIL ?? "",
+
   /** PEM certificate body served to VPN nodes when auto-provisioning TLS */
   VPN_TLS_CERT_PEM: process.env.VPN_TLS_CERT_PEM ?? "",
 
@@ -35,6 +38,13 @@ export const config = {
 
   /** Filesystem path to the private key used for VPN node TLS */
   VPN_TLS_KEY_FILE: process.env.VPN_TLS_KEY_FILE ?? "",
+
+  /** Optional certbot cert name override when it differs from the site hostname */
+  VPN_TLS_CERT_NAME: process.env.VPN_TLS_CERT_NAME ?? "",
+
+  /** Mounted certbot live directory visible to the backend container */
+  VPN_TLS_CERTBOT_DIR:
+    process.env.VPN_TLS_CERTBOT_DIR ?? "/etc/letsencrypt/live",
 
   /** Optional hostname suffix restriction for auto-issued VPN node TLS */
   VPN_TLS_ALLOWED_SUFFIX: process.env.VPN_TLS_ALLOWED_SUFFIX ?? ".lowkey.su",
