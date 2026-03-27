@@ -9,7 +9,7 @@ voiddb_password: "changeme"
 # voiddb_token: ""  # use token OR username+password
 
 # Central backend API URL
-backend_url: "https://api.lowkeyvpn.com"
+backend_url: "https://lowkey.su/api"
 backend_secret: "your-server-secret-here"  # X-Server-Secret header
 
 # Server identity
@@ -25,7 +25,7 @@ bandwidth_up:   1000  # Mbps
 bandwidth_down: 1000  # Mbps
 
 # ── Captive portal ───────────────────────────────────────────────────────────
-captive_portal_url: "https://lowkeyvpn.com/me/billing"
+captive_portal_url: "https://lowkey.su"
 
 # HTTP captive portal (port 80): intercepts HTTP requests and redirects to billing
 captive_portal_listen: "0.0.0.0:8080"
@@ -50,5 +50,5 @@ mtproto_listen: "0.0.0.0:8443"
 # Generate a secret with: ./hysteria-server -gen-mtproto-secret
 # Prefix "dd" enables fake-TLS camouflage (recommended)
 mtproto_secret: "dd0123456789abcdef0123456789abcdef"
-mtproto_channel: "@lowkeyvpn"   # advertised channel (optional)
+mtproto_channel: "@lowkeyvpnbot"   # advertised bot/channel username (optional)
 mtproto_add_channel: false

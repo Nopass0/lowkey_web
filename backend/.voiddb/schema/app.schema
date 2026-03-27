@@ -219,6 +219,7 @@ database {
     speedLimitDownMbps Int?
     isPopular Boolean @default(false)
     isActive Boolean @default(true)
+    isTelegramPlan Boolean @default(false)
     sortOrder Int @default(0)
     createdAt DateTime @default(now())
     updatedAt DateTime

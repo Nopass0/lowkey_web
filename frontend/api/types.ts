@@ -178,6 +178,7 @@ export interface SubscriptionPlan {
   speedLimitUpMbps?: number | null;
   speedLimitDownMbps?: number | null;
   isPopular?: boolean;
+  isTelegramPlan?: boolean;
   promoActive?: boolean;
   promoPrice?: number | null;
   promoLabel?: string | null;

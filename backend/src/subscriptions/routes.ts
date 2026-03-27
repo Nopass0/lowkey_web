@@ -41,6 +41,7 @@ async function listPublicPlans() {
       speedLimitUpMbps: plan.speedLimitUpMbps,
       speedLimitDownMbps: plan.speedLimitDownMbps,
       isPopular: plan.isPopular,
+      isTelegramPlan: plan.isTelegramPlan,
       promoActive: plan.promoActive,
       promoPrice: plan.promoPrice,
       promoLabel: plan.promoLabel,
@@ -60,6 +61,7 @@ async function listPublicPlans() {
       speedLimitUpMbps: null,
       speedLimitDownMbps: null,
       isPopular: false,
+      isTelegramPlan: false,
       promoActive: false,
       promoPrice: null,
       promoLabel: "TEST",
@@ -131,6 +133,8 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
       const months =
         body.period === "3months" ? 3 : body.period === "6months" ? 6 : body.period === "yearly" ? 12 : 1;
       const baseTotalPrice = isTestSubscription ? 10 : priceItem.price * months;
+      const isFreeTelegramPlan =
+        !isTestSubscription && Boolean(plan?.isTelegramPlan) && baseTotalPrice <= 0;
 
       const dbUser = await db.user.findUnique({
         where: { id: user.userId },
@@ -160,9 +164,12 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
       }
 
       const totalPrice = Math.max(
-        1,
+        isFreeTelegramPlan ? 0 : 1,
         Math.round((isTestSubscription ? 10 : discountedPrice) * 100) / 100,
       );
+      const autoRenewPaymentMethodId = isFreeTelegramPlan
+        ? null
+        : (body.autoRenewPaymentMethodId ?? null);
 
       if (dbUser.balance < totalPrice) {
         set.status = 402;
@@ -190,13 +197,20 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
           where: { id: user.userId },
           data: {
             balance: { decrement: totalPrice },
-            pendingDiscountPct: 0,
-            pendingDiscountFixed: 0,
+            ...(!isTestSubscription && !isFreeTelegramPlan
+              ? {
+                  pendingDiscountPct: 0,
+                  pendingDiscountFixed: 0,
+                }
+              : {}),
           },
+          select: { balance: true },
         });
 
         const discountNote =
-          !isTestSubscription && (fixedDiscount > 0 || pctDiscount > 0)
+          !isTestSubscription &&
+          !isFreeTelegramPlan &&
+          (fixedDiscount > 0 || pctDiscount > 0)
             ? " (скидка)"
             : "";
 
@@ -217,8 +231,8 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
             planName,
             activeUntil,
             billingPeriod: isTestSubscription ? "test_2m" : body.period,
-            autoRenewal: Boolean(body.autoRenewPaymentMethodId),
-            autoRenewPaymentMethodId: body.autoRenewPaymentMethodId ?? null,
+            autoRenewal: Boolean(autoRenewPaymentMethodId),
+            autoRenewPaymentMethodId,
           },
           create: {
             userId: user.userId,
@@ -226,12 +240,12 @@ const privateSubscriptionRoutes = new Elysia({ prefix: "/subscriptions" }).post(
             planName,
             activeUntil,
             billingPeriod: isTestSubscription ? "test_2m" : body.period,
-            autoRenewal: Boolean(body.autoRenewPaymentMethodId),
-            autoRenewPaymentMethodId: body.autoRenewPaymentMethodId ?? null,
+            autoRenewal: Boolean(autoRenewPaymentMethodId),
+            autoRenewPaymentMethodId,
           },
         });
 
-        if (dbUser.referredById) {
+        if (dbUser.referredById && totalPrice > 0) {
           const referrer = await tx.user.findUnique({
             where: { id: dbUser.referredById },
             select: { referralRate: true },

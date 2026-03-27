@@ -6,8 +6,8 @@
 // The secret format "dd<hex>" enables TLS-camouflage (fake-TLS),
 // making traffic appear as regular HTTPS to DPI systems.
 //
-// When addChannelOnConnect is enabled, the proxy adds an "advertisement"
-// configuration that Telegram clients show as a channel invite.
+// When addChannelOnConnect is enabled, the proxy exposes an optional
+// Telegram promo username (for example a bot or channel).
 //
 // References:
 //
@@ -44,7 +44,7 @@ type Server struct {
 	listen              string
 	secret              []byte // 16 bytes raw secret (from hex string)
 	addChannelOnConnect bool
-	channelUsername     string // @channel_name shown as promo
+	channelUsername     string // @lowkeyvpnbot or channel username shown as promo
 	ln                  net.Listener
 }
 
@@ -82,7 +82,7 @@ func (s *Server) ListenAndServe() error {
 	s.ln = ln
 	log.Printf("[MTProto] Listening on %s", s.listen)
 	if s.channelUsername != "" {
-		log.Printf("[MTProto] Advertising channel: %s", s.channelUsername)
+		log.Printf("[MTProto] Advertising Telegram promo: %s", s.channelUsername)
 	}
 
 	for {

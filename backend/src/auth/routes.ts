@@ -13,6 +13,7 @@ import { authMiddleware } from "./middleware";
 import crypto from "crypto";
 import { sendTelegramMessage } from "../telegram";
 import {
+  autoPurchaseSubscription,
   buildYKReceipt,
   createYKPayment,
   getSubscriptionCharge,
@@ -381,6 +382,13 @@ async function createBotPaymentAction(params: {
     }
 
     const charge = await getSubscriptionCharge(plan.slug, period, false);
+    if (plan.isTelegramPlan && charge.amount <= 0) {
+      await autoPurchaseSubscription(params.userId, plan.slug, period, null, false);
+      return {
+        redirectTo: `${config.SITE_URL}/me/billing?subscribed=1`,
+        pendingPayment: null,
+      };
+    }
 
     const user = await db.user.findUnique({
       where: { id: params.userId },

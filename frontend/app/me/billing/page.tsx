@@ -9,7 +9,7 @@ import {
   usePaymentMethods,
   type YKPaymentType,
 } from "@/hooks/useYokassa";
-import type { PaymentMethod } from "@/api/types";
+import type { PaymentMethod, SubscriptionPlan } from "@/api/types";
 import {
   Card,
   CardContent,
@@ -602,7 +602,14 @@ export default function BillingPage() {
     }
   };
 
-  const handleSubscribe = async (planId: string, cost: number) => {
+  const handleSubscribe = async (plan: SubscriptionPlan, cost: number) => {
+    const isFreeTelegramPlan = Boolean(plan.isTelegramPlan) && cost <= 0;
+    if (isFreeTelegramPlan) {
+      const result = await purchaseSubscription(plan.id, period);
+      if (result) refetch();
+      return;
+    }
+
     const autoRenewMethodId =
       selectedCardId ??
       savedCards.find((card) => card.isDefault)?.id ??
@@ -611,7 +618,7 @@ export default function BillingPage() {
     if (!autoRenewMethodId) {
       if (profile.balance >= cost) {
         await handleLinkCard({
-          subscriptionPlanId: planId,
+          subscriptionPlanId: plan.id,
           subscriptionPeriod: period,
         });
         return;
@@ -620,7 +627,7 @@ export default function BillingPage() {
 
     if (profile.balance >= cost) {
       const result = await purchaseSubscription(
-        planId,
+        plan.id,
         period,
         autoRenewMethodId ?? undefined,
       );
@@ -628,7 +635,7 @@ export default function BillingPage() {
     } else {
       const needed = cost - profile.balance;
       setTopUpAmount(needed.toString());
-      setPendingPlanPurchase({ planId, cost });
+      setPendingPlanPurchase({ planId: plan.id, cost });
       setPaymentType(profile.sbpProvider === "yookassa" ? "sbp" : "bank_card");
       setIsTopUpOpen(true);
     }
@@ -1192,7 +1199,14 @@ export default function BillingPage() {
                           className={`pb-0 text-center ${plan.isPopular ? "pt-9" : "pt-6"}`}
                         >
                           <CardTitle className="text-base font-semibold text-muted-foreground">
-                            {plan.name}
+                            <span className="inline-flex items-center gap-2">
+                              {plan.name}
+                              {plan.isTelegramPlan && (
+                                <Badge className="bg-sky-500/10 text-sky-600 border-sky-500/20 text-[10px] py-0 px-2">
+                                  Telegram VPN
+                                </Badge>
+                              )}
+                            </span>
                           </CardTitle>
                           <div className="mt-3 flex items-end justify-center gap-1">
                             <span className="text-5xl font-black tracking-tighter text-foreground leading-none">
@@ -1269,12 +1283,14 @@ export default function BillingPage() {
                               variant={plan.isPopular ? "default" : "secondary"}
                               onClick={() =>
                                 handleSubscribe(
-                                  plan.id,
+                                  plan,
                                   totalCost,
                                 )
                               }
                             >
-                              {canAfford
+                              {plan.isTelegramPlan && totalCost <= 0
+                                ? "Получить бесплатно"
+                                : canAfford
                                 ? "Купить тариф"
                                 : `Пополнить на ${totalCost - profile.balance} ₽`}
                             </Button>

@@ -5,16 +5,16 @@
 //   - Real-time connection counting via heartbeat
 //   - SNI-based domain visit statistics (flushed to backend every N seconds)
 //   - Captive portal for expired subscriptions:
-//       HTTP (port 80):  302 redirect to billing page
-//       HTTPS (port 443): DNS hijack → HTTPS captive portal server
+//     HTTP (port 80):  302 redirect to billing page
+//     HTTPS (port 443): DNS hijack → HTTPS captive portal server
 //   - DNS hijacking for expired users (both HTTP and HTTPS coverage)
-//   - MTProto proxy for Telegram with channel advertising
+//   - MTProto proxy for Telegram with optional bot/channel advertising
 //
 // Usage:
 //
 //	VOIDDB_URL=http://voiddb:7700 \
 //	VOIDDB_USERNAME=admin VOIDDB_PASSWORD=secret \
-//	BACKEND_URL=https://api.lowkeyvpn.com \
+//	BACKEND_URL=https://lowkey.su/api \
 //	SERVER_IP=1.2.3.4 CERT_FILE=/ssl/server.crt KEY_FILE=/ssl/server.key \
 //	./hysteria-server
 package main
@@ -59,6 +59,12 @@ func main() {
 	}
 	if cfg.CertFile == "" || cfg.KeyFile == "" {
 		log.Fatal("[Config] CERT_FILE and KEY_FILE are required")
+	}
+	if cfg.ServerIP == "" {
+		log.Printf("[Config] SERVER_IP is empty; server registration and captive portal IP mapping will be incomplete")
+	}
+	if cfg.BackendSecret == "" {
+		log.Printf("[Config] BACKEND_SECRET is empty; backend /servers/* endpoints must allow unsigned nodes")
 	}
 
 	// ── VoidDB client ─────────────────────────────────────────────────────────

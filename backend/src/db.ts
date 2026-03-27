@@ -249,6 +249,7 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
       "speedLimitDownMbps",
       "isPopular",
       "isActive",
+      "isTelegramPlan",
       "sortOrder",
       "promoActive",
       "promoPrice",

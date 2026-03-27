@@ -497,7 +497,7 @@ export async function autoPurchaseSubscription(
       ? { slug: "test-subscription", name: "Тестовая подписка" }
       : await db.subscriptionPlan.findFirst({
           where: { slug: planSlug, isActive: true },
-          select: { slug: true, name: true },
+          select: { slug: true, name: true, isTelegramPlan: true },
         });
 
   if (!plan) {
@@ -516,6 +516,10 @@ export async function autoPurchaseSubscription(
   const activeUntil = new Date(base.getTime() + extensionMs);
   const isTest =
     typeof isTestOverride === "boolean" ? isTestOverride : await isYKTestMode();
+  const effectivePaymentMethodId =
+    (plan as { isTelegramPlan?: boolean }).isTelegramPlan && charge.amount <= 0
+      ? null
+      : (paymentMethodId ?? null);
 
   await db.$transaction(async (tx) => {
     await tx.user.update({
@@ -539,18 +543,18 @@ export async function autoPurchaseSubscription(
         planId: plan.slug,
         planName: plan.name,
         activeUntil,
-        autoRenewal: Boolean(paymentMethodId),
+        autoRenewal: Boolean(effectivePaymentMethodId),
         billingPeriod: period,
-        autoRenewPaymentMethodId: paymentMethodId ?? null,
+        autoRenewPaymentMethodId: effectivePaymentMethodId,
       },
       create: {
         userId,
         planId: plan.slug,
         planName: plan.name,
         activeUntil,
-        autoRenewal: Boolean(paymentMethodId),
+        autoRenewal: Boolean(effectivePaymentMethodId),
         billingPeriod: period,
-        autoRenewPaymentMethodId: paymentMethodId ?? null,
+        autoRenewPaymentMethodId: effectivePaymentMethodId,
       },
     });
   });
@@ -653,6 +657,19 @@ export async function processAutoRenewals() {
         period,
         isTestSubscription,
       );
+      if (charge.amount <= 0) {
+        const extensionMs = getRenewalPeriodMs(period);
+        await db.subscription.update({
+          where: { userId: subscription.userId },
+          data: {
+            activeUntil: new Date(now.getTime() + extensionMs),
+            billingPeriod: period,
+            autoRenewal: false,
+            autoRenewPaymentMethodId: null,
+          },
+        });
+        continue;
+      }
       const isTest = await isYKTestMode();
 
       const ykPayment = await createAutoPayment(

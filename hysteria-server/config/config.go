@@ -82,18 +82,29 @@ func Load() *Config {
 	applyStringEnv("MTPROTO_LISTEN", &cfg.MTProtoListen)
 	applyStringEnv("MTPROTO_SECRET", &cfg.MTProtoSecret)
 	applyStringEnv("MTPROTO_CHANNEL", &cfg.MTProtoChannelUsername)
+	applyStringEnv("MTPROTO_BOT", &cfg.MTProtoChannelUsername)
 	applyBoolEnv("MTPROTO_ENABLED", &cfg.MTProtoEnabled)
 	applyBoolEnv("MTPROTO_ADD_CHANNEL", &cfg.MTProtoAddChannelOnConnect)
+	applyBoolEnv("MTPROTO_ADD_BOT", &cfg.MTProtoAddChannelOnConnect)
 	applyIntEnv("BANDWIDTH_UP", &cfg.BandwidthUp)
 	applyIntEnv("BANDWIDTH_DOWN", &cfg.BandwidthDown)
 	applyIntEnv("DOMAIN_FLUSH_INTERVAL", &cfg.DomainFlushInterval)
 
 	// Defaults
+	if cfg.BackendURL == "" {
+		cfg.BackendURL = "https://lowkey.su/api"
+	}
 	if cfg.Listen == "" {
 		cfg.Listen = "0.0.0.0:443"
 	}
 	if cfg.CaptivePortalListen == "" {
 		cfg.CaptivePortalListen = "0.0.0.0:8080"
+	}
+	if cfg.CaptiveHTTPSListen == "" {
+		cfg.CaptiveHTTPSListen = "0.0.0.0:8443"
+	}
+	if cfg.DNSListen == "" {
+		cfg.DNSListen = "0.0.0.0:53"
 	}
 	if cfg.MTProtoListen == "" {
 		cfg.MTProtoListen = "0.0.0.0:8443"
@@ -108,10 +119,19 @@ func Load() *Config {
 		cfg.BandwidthDown = 1000
 	}
 	if cfg.CaptivePortalURL == "" {
-		cfg.CaptivePortalURL = "https://lowkeyvpn.com/me/billing"
+		cfg.CaptivePortalURL = "https://lowkey.su"
 	}
 	if cfg.UpstreamDNS == "" {
 		cfg.UpstreamDNS = "8.8.8.8:53"
+	}
+	if cfg.MTProtoChannelUsername == "" {
+		cfg.MTProtoChannelUsername = "@lowkeyvpnbot"
+	}
+	if cfg.ServerIP == "" {
+		cfg.ServerIP = cfg.CaptiveIP
+	}
+	if cfg.CaptiveIP == "" {
+		cfg.CaptiveIP = cfg.ServerIP
 	}
 	return cfg
 }

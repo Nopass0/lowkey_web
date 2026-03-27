@@ -72,6 +72,7 @@ export default function TariffsAdminPage() {
         promoLabel: plan.promoLabel ?? null,
         promoMaxUses: plan.promoMaxUses ?? null,
         promoUsed: plan.promoUsed ?? 0,
+        isTelegramPlan: plan.isTelegramPlan ?? false,
         maxDevices: plan.maxDevices ?? 1,
         maxConcurrentConnections: plan.maxConcurrentConnections ?? 1,
         speedLimitUpMbps: plan.speedLimitUpMbps ?? null,
@@ -188,6 +189,7 @@ export default function TariffsAdminPage() {
       maxConcurrentConnections: 1,
       speedLimitUpMbps: null,
       speedLimitDownMbps: null,
+      isTelegramPlan: false,
       promoActive: false, promoPrice: null, promoLabel: null, promoMaxUses: null,
     });
     setIsDialogOpen(true);
@@ -208,6 +210,7 @@ export default function TariffsAdminPage() {
         maxConcurrentConnections: editingPlan.maxConcurrentConnections ?? 1,
         speedLimitUpMbps: editingPlan.speedLimitUpMbps ?? null,
         speedLimitDownMbps: editingPlan.speedLimitDownMbps ?? null,
+        isTelegramPlan: editingPlan.isTelegramPlan ?? false,
         promoActive: editingPlan.promoActive ?? false,
         promoPrice: editingPlan.promoActive ? (editingPlan.promoPrice ?? null) : null,
         promoLabel: editingPlan.promoLabel ?? null,
@@ -375,6 +378,7 @@ export default function TariffsAdminPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <CardTitle className="text-xl font-bold">{plan.name}</CardTitle>
                     {plan.isPopular && <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] py-0 px-2">POPULAR</Badge>}
+                    {plan.isTelegramPlan && <Badge className="bg-sky-500/10 text-sky-500 border-sky-500/20 text-[10px] py-0 px-2">TELEGRAM VPN</Badge>}
                     {plan.promoActive && <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-[10px] py-0 px-2 gap-1"><Tag className="w-2.5 h-2.5" />АКЦИЯ</Badge>}
                   </div>
                   <CardDescription className="font-mono text-xs uppercase tracking-tighter opacity-70">ID: {plan.slug}</CardDescription>
@@ -475,6 +479,22 @@ export default function TariffsAdminPage() {
                     </div>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="isTelegramPlan"
+                    checked={editingPlan.isTelegramPlan ?? false}
+                    onCheckedChange={(v) => setEditingPlan((p) => ({ ...p, isTelegramPlan: v }))}
+                  />
+                  <Label htmlFor="isTelegramPlan" className="text-xs font-bold uppercase tracking-widest text-muted-foreground cursor-pointer">
+                    Telegram VPN тариф
+                  </Label>
+                </div>
+                {editingPlan.isTelegramPlan && (
+                  <p className="text-xs text-muted-foreground">
+                    Если у этого тарифа нулевая цена, пользователь сможет оформить его без привязки карты.
+                  </p>
+                )}
 
                 {/* Prices */}
                 <div className="p-5 rounded-2xl bg-muted/30 border border-border/50 space-y-4">

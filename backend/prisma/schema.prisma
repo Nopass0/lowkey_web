@@ -93,6 +93,7 @@ model SubscriptionPlan {
   speedLimitDownMbps Int?
   isPopular       Boolean             @default(false)
   isActive        Boolean             @default(true)
+  isTelegramPlan  Boolean             @default(false)
   sortOrder       Int                 @default(0)
   promoActive     Boolean             @default(false)
   promoPrice      Float?
