@@ -22,12 +22,17 @@ function buildVlessLink(
   template: string | null,
   userId: string,
   serverIp: string,
+  serverHost?: string | null,
 ): string | null {
   if (!template) {
     return null;
   }
 
-  return template.replaceAll("{uuid}", userId).replaceAll("{ip}", serverIp);
+  const serverAddress = serverHost || serverIp;
+  return template
+    .replaceAll("{uuid}", userId)
+    .replaceAll("{ip}", serverIp)
+    .replaceAll("{host}", serverAddress);
 }
 
 /**
@@ -116,12 +121,14 @@ export const userRoutes = new Elysia({ prefix: "/user" })
         vpnAccess: vpnServer
           ? {
               serverIp: vpnServer.ip,
+              serverHost: vpnServer.hostname ?? null,
               location: vpnServer.location,
               protocols: vpnServer.supportedProtocols,
               vlessLink: buildVlessLink(
                 vpnServer.connectLinkTemplate,
                 dbUser.id,
                 vpnServer.ip,
+                vpnServer.hostname ?? null,
               ),
             }
           : null,

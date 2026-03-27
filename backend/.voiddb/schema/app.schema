@@ -353,6 +353,7 @@ database {
   model LowkeyVpnServers {
     id String @id @map("_id")
     ip String
+    hostname String?
     port Int
     status String @default("offline")
     currentLoad Int @default(0)

@@ -28,8 +28,9 @@ type Config struct {
 	BandwidthDown int    `yaml:"bandwidth_down"` // Mbps
 
 	// Server identity (registered in backend)
-	ServerID string `yaml:"server_id"`
-	ServerIP string `yaml:"server_ip"`
+	ServerID       string `yaml:"server_id"`
+	ServerIP       string `yaml:"server_ip"`
+	ServerHostname string `yaml:"server_hostname"`
 
 	// Captive portal - URL shown to expired users
 	CaptivePortalURL    string `yaml:"captive_portal_url"`    // e.g. https://lowkeyvpn.com/me/billing
@@ -69,6 +70,7 @@ func Load() *Config {
 	applyStringEnv("BACKEND_SECRET", &cfg.BackendSecret)
 	applyStringEnv("SERVER_ID", &cfg.ServerID)
 	applyStringEnv("SERVER_IP", &cfg.ServerIP)
+	applyStringEnv("SERVER_HOSTNAME", &cfg.ServerHostname)
 	applyStringEnv("LISTEN", &cfg.Listen)
 	applyStringEnv("CERT_FILE", &cfg.CertFile)
 	applyStringEnv("KEY_FILE", &cfg.KeyFile)

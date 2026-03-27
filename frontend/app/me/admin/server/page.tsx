@@ -44,6 +44,7 @@ import { toast } from "sonner";
 interface VpnServer {
   id: string;
   ip: string;
+  hostname?: string | null;
   port: number;
   supportedProtocols: string[];
   serverType: string;
@@ -171,7 +172,7 @@ export default function AdminServersPage() {
                         {server.location || "Неизвестно"}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-                        {server.ip}:{server.port}
+                        {server.hostname ? `${server.hostname} (${server.ip})` : server.ip}:{server.port}
                       </div>
                     </div>
                   </TableCell>
@@ -231,13 +232,14 @@ function EditServerDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState(server.location);
+  const [hostname, setHostname] = useState(server.hostname || "");
   const [template, setTemplate] = useState(server.connectLinkTemplate || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onUpdate({ location, connectLinkTemplate: template || null });
+      await onUpdate({ location, hostname: hostname || null, connectLinkTemplate: template || null });
       toast.success("Сервер обновлен");
       setOpen(false);
     } catch {
@@ -288,6 +290,21 @@ function EditServerDialog({
 
               <div className="space-y-3">
                 <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground/60 ml-1">
+                  Hostname / домен сервера
+                </Label>
+                <div className="relative group">
+                  <Link className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                  <Input
+                    value={hostname}
+                    onChange={(e) => setHostname(e.target.value)}
+                    placeholder="s1.lowkey.su"
+                    className="rounded-2xl h-14 pl-12 bg-muted/30 border-border/50 focus:bg-background transition-all text-lg font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground/60 ml-1">
                   Шаблон ссылки подключения (vless://...)
                 </Label>
                 <div className="relative group">
@@ -295,7 +312,7 @@ function EditServerDialog({
                   <Textarea
                     value={template}
                     onChange={(e) => setTemplate(e.target.value)}
-                    placeholder="vless://{uuid}@{ip}:443?..."
+                    placeholder="vless://{uuid}@{host}:443?..."
                     className="rounded-[1.5rem] min-h-[160px] pl-12 pt-4 bg-muted/30 border-border/50 focus:bg-background transition-all font-mono text-sm leading-relaxed resize-none"
                   />
                 </div>
@@ -309,6 +326,9 @@ function EditServerDialog({
                     </code>
                     <code className="px-2 py-0.5 rounded-md bg-primary/5 text-primary text-[10px] font-black border border-primary/10">
                       {`{ip}`}
+                    </code>
+                    <code className="px-2 py-0.5 rounded-md bg-primary/5 text-primary text-[10px] font-black border border-primary/10">
+                      {`{host}`}
                     </code>
                   </div>
                 </div>

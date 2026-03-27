@@ -14,6 +14,7 @@ backend_secret: "your-server-secret-here"  # X-Server-Secret header
 
 # Server identity
 server_ip: "1.2.3.4"          # public IP of this server
+server_hostname: "s1.lowkey.su"
 # server_id: ""               # set automatically on first register
 
 # Hysteria2 TLS

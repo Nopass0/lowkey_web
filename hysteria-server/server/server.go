@@ -291,6 +291,7 @@ func (s *Server) HeartbeatLoop(ctx context.Context) {
 func (s *Server) register() {
 	payload := map[string]interface{}{
 		"ip":                 s.cfg.ServerIP,
+		"hostname":           s.cfg.ServerHostname,
 		"port":               s.listenPort(),
 		"supportedProtocols": []string{"hysteria2"},
 		"serverType":         "hysteria2",

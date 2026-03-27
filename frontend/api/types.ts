@@ -90,6 +90,7 @@ export interface Subscription {
 
 export interface UserVpnAccess {
   serverIp: string;
+  serverHost?: string | null;
   location: string;
   protocols: string[];
   vlessLink: string | null;

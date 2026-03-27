@@ -17,7 +17,7 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
     "/:id",
     async ({ params, body, set }) => {
       try {
-        const { location, connectLinkTemplate, status, serverType } = body;
+        const { location, hostname, connectLinkTemplate, status, serverType } = body;
         let finalTemplate = connectLinkTemplate;
         if (
           finalTemplate &&
@@ -35,6 +35,7 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
           where: { id: params.id },
           data: {
             location,
+            hostname: hostname ?? null,
             connectLinkTemplate: finalTemplate,
             status: status as any,
             serverType,
@@ -50,6 +51,7 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
     {
       body: t.Object({
         location: t.Optional(t.String()),
+        hostname: t.Optional(t.Nullable(t.String())),
         connectLinkTemplate: t.Optional(t.Nullable(t.String())),
         status: t.Optional(t.String()),
         serverType: t.Optional(t.String()),

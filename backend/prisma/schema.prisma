@@ -319,6 +319,7 @@ model SupportTicket {
 model VpnServer {
   id                  String   @id @default(uuid())
   ip                  String
+  hostname            String?
   port                Int
   status              String   @default("offline")
   currentLoad         Int      @default(0)

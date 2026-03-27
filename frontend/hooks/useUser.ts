@@ -45,6 +45,7 @@ const MOCK_PROFILE: UserProfile = {
   sbpProvider: "tochka",
   vpnAccess: {
     serverIp: "46.226.166.226",
+    serverHost: "s1.lowkey.su",
     location: "RU",
     protocols: ["VLESS"],
     vlessLink:

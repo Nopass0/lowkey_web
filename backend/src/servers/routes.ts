@@ -38,7 +38,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
       }
 
       try {
-        const { ip, port, supportedProtocols, serverType } = body;
+        const { ip, hostname, port, supportedProtocols, serverType } = body;
         const existing = await db.vpnServer.findFirst({
           where: { ip, port },
         });
@@ -47,6 +47,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
           const updated = await db.vpnServer.update({
             where: { id: existing.id },
             data: {
+              hostname: hostname ?? existing.hostname ?? null,
               supportedProtocols,
               serverType,
               status: "online",
@@ -59,6 +60,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
         const server = await db.vpnServer.create({
           data: {
             ip,
+            hostname: hostname ?? null,
             port,
             supportedProtocols,
             serverType,
@@ -77,6 +79,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
     {
       body: t.Object({
         ip: t.String(),
+        hostname: t.Optional(t.Nullable(t.String())),
         port: t.Number(),
         supportedProtocols: t.Array(t.String()),
         serverType: t.String(),
@@ -463,6 +466,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
         select: {
           id: true,
           ip: true,
+          hostname: true,
           port: true,
           supportedProtocols: true,
           serverType: true,
@@ -486,6 +490,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
         select: {
           id: true,
           ip: true,
+          hostname: true,
           port: true,
           supportedProtocols: true,
           serverType: true,

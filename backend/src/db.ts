@@ -404,6 +404,7 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
     fields: [
       "id",
       "ip",
+      "hostname",
       "port",
       "status",
       "currentLoad",
