@@ -415,6 +415,11 @@ database {
     bytesTransferred Float @default(0)
     firstVisitAt DateTime @default(now())
     lastVisitAt DateTime @default(now())
+    lastNetwork String?
+    lastPort Int?
+    lastRemoteAddr String?
+    lastServerId String?
+    lastServerIp String?
     @@map("vpn_domain_stats")
   }
 

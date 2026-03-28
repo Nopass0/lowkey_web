@@ -582,7 +582,20 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
   },
   vpnDomainStats: {
     collection: "vpn_domain_stats",
-    fields: ["id", "userId", "domain", "visitCount", "bytesTransferred", "firstVisitAt", "lastVisitAt"],
+    fields: [
+      "id",
+      "userId",
+      "domain",
+      "visitCount",
+      "bytesTransferred",
+      "firstVisitAt",
+      "lastVisitAt",
+      "lastNetwork",
+      "lastPort",
+      "lastRemoteAddr",
+      "lastServerId",
+      "lastServerIp",
+    ],
     dateFields: ["firstVisitAt", "lastVisitAt"],
   },
   mtprotoSettings: {

@@ -811,7 +811,13 @@ export interface AdminUserDomainStat {
   domain: string;
   visitCount: number;
   bytesTransferred: number;
+  firstVisitAt: string | null;
   lastVisitAt: string | null;
+  lastNetwork: string | null;
+  lastPort: number | null;
+  lastRemoteAddr: string | null;
+  lastServerId: string | null;
+  lastServerIp: string | null;
 }
 
 export interface AdminUserStatsResponse {

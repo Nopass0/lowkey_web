@@ -10,6 +10,9 @@ import { resolveVpnPolicyForUser } from "../../vpn/policy";
 
 const ACTIVE_VPN_SESSION_STALE_MS = 5 * 60 * 1000;
 const ACTIVE_DOMAIN_WINDOW_MS = 2 * 60 * 1000;
+const SESSION_HISTORY_LIMIT = 100;
+const DOMAIN_HISTORY_LIMIT = 500;
+const ACTIVE_DOMAIN_LIMIT = 20;
 
 function parseOptionalBooleanFilter(value?: string) {
   if (value === "true") return true;
@@ -354,6 +357,7 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
           vpnProtocolDocs,
           vpnSessionDocs,
           activeSessionDocs,
+          activeDomainDocs,
           domainDocs,
         ] =
           await Promise.all([
@@ -384,7 +388,7 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
                 },
               },
               orderBy: { connectedAt: "desc" },
-              take: 15,
+              take: SESSION_HISTORY_LIMIT,
             }),
             db.vpnSession.findMany({
               where: {
@@ -396,9 +400,17 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
               take: 100,
             }),
             db.vpnDomainStats.findMany({
+              where: {
+                userId,
+                lastVisitAt: { gte: activeDomainCutoff },
+              },
+              orderBy: { lastVisitAt: "desc" },
+              take: ACTIVE_DOMAIN_LIMIT,
+            }),
+            db.vpnDomainStats.findMany({
               where: { userId },
-              orderBy: { visitCount: "desc" },
-              take: 50,
+              orderBy: [{ lastVisitAt: "desc" }, { visitCount: "desc" }],
+              take: DOMAIN_HISTORY_LIMIT,
             }),
           ]);
 
@@ -462,22 +474,34 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
             .filter((value): value is string => Boolean(value)),
         ).size;
 
-        const mappedDomainStats = domainDocs.map((doc) => ({
+        const mapDomainStat = (doc: (typeof domainDocs)[number]) => ({
           domain: String(doc.domain ?? ""),
           visitCount: Number(doc.visitCount ?? 0),
           bytesTransferred: Number(doc.bytesTransferred ?? 0),
+          firstVisitAt: doc.firstVisitAt
+            ? new Date(doc.firstVisitAt).toISOString()
+            : null,
           lastVisitAt: doc.lastVisitAt
             ? new Date(doc.lastVisitAt).toISOString()
             : null,
-        }));
+          lastNetwork: doc.lastNetwork ? String(doc.lastNetwork) : null,
+          lastPort:
+            typeof doc.lastPort === "number"
+              ? doc.lastPort
+              : doc.lastPort != null
+                ? Number(doc.lastPort)
+                : null,
+          lastRemoteAddr: doc.lastRemoteAddr
+            ? String(doc.lastRemoteAddr)
+            : null,
+          lastServerId: doc.lastServerId ? String(doc.lastServerId) : null,
+          lastServerIp: doc.lastServerIp ? String(doc.lastServerIp) : null,
+        });
 
-        const activeDomains = mappedDomainStats
-          .filter((doc) => {
-            if (!doc.lastVisitAt) {
-              return false;
-            }
-            return new Date(doc.lastVisitAt) >= activeDomainCutoff;
-          })
+        const mappedDomainStats = domainDocs.map(mapDomainStat);
+
+        const activeDomains = activeDomainDocs
+          .map(mapDomainStat)
           .sort((a, b) => {
             const left = a.lastVisitAt ? new Date(a.lastVisitAt).getTime() : 0;
             const right = b.lastVisitAt ? new Date(b.lastVisitAt).getTime() : 0;

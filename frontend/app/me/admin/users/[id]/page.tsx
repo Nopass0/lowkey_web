@@ -72,20 +72,34 @@ export default function AdminUserDetailsPage() {
     vpnSpeedLimitDownMbps: "",
   });
   const [isSavingVpnLimits, setIsSavingVpnLimits] = useState(false);
+  const [sessionPage, setSessionPage] = useState(1);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const res = await fetchUserStats(id, startDate, endDate);
       setData(res);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, [endDate, fetchUserStats, id, startDate]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadData({ silent: true });
+    }, 15000);
+
+    return () => window.clearInterval(timer);
   }, [loadData]);
 
   useEffect(() => {
@@ -127,8 +141,24 @@ export default function AdminUserDetailsPage() {
         const right = b.lastVisitAt ? new Date(b.lastVisitAt).getTime() : 0;
         return right - left;
       })
-      .slice(0, 8);
+      .slice(0, 12);
   }, [data]);
+
+  const sessionPages = useMemo(() => {
+    if (!data?.vpn.recentSessions?.length) return 1;
+    return Math.max(1, Math.ceil(data.vpn.recentSessions.length / 10));
+  }, [data]);
+
+  const paginatedSessions = useMemo(() => {
+    if (!data) return [];
+    const current = Math.min(sessionPage, sessionPages);
+    const start = (current - 1) * 10;
+    return data.vpn.recentSessions.slice(start, start + 10);
+  }, [data, sessionPage, sessionPages]);
+
+  useEffect(() => {
+    setSessionPage((current) => Math.min(current, sessionPages));
+  }, [sessionPages]);
 
   const handleSaveVpnLimits = async () => {
     const parseValue = (raw: string) => {
@@ -310,6 +340,9 @@ export default function AdminUserDetailsPage() {
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">
                   Активность за последние 2 минуты
                 </p>
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Auto refresh every 15s
               </div>
               <Badge variant="outline" className="rounded-full">
                 {currentSites.length} active
@@ -645,7 +678,7 @@ export default function AdminUserDetailsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {data.vpn.recentSessions.map((session) => (
+                {paginatedSessions.map((session) => (
                   <div
                     key={session.id}
                     className="rounded-[2rem] border border-border/50 px-5 py-4 space-y-2"
@@ -688,6 +721,40 @@ export default function AdminUserDetailsPage() {
                     </p>
                   </div>
                 ))}
+
+                {sessionPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      Page {Math.min(sessionPage, sessionPages)} / {sessionPages}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSessionPage((value) => Math.max(1, value - 1))
+                        }
+                        disabled={sessionPage <= 1}
+                      >
+                        Prev
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSessionPage((value) =>
+                            Math.min(sessionPages, value + 1),
+                          )
+                        }
+                        disabled={sessionPage >= sessionPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
