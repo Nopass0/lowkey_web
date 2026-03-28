@@ -22,6 +22,7 @@ import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { AdminUserStatsResponse } from "@/api/types";
 import { Loader } from "@/components/ui/loader";
 import { DomainStats } from "@/components/admin/domain-stats";
+import { CurrentDomainStats } from "@/components/admin/current-domain-stats";
 import {
   AreaChart,
   Area,
@@ -134,15 +135,30 @@ export default function AdminUserDetailsPage() {
 
   const currentSites = useMemo(() => {
     if (!data) return [];
-    return (data.activeDomains ?? [])
+    const activeCutoff = Date.now() - 2 * 60 * 1000;
+    const source =
+      data.activeDomains?.length > 0
+        ? data.activeDomains
+        : (data.domainStats ?? []).filter((domain) => {
+            if (!domain.lastVisitAt) {
+              return false;
+            }
+            return new Date(domain.lastVisitAt).getTime() >= activeCutoff;
+          });
+
+    return source
       .slice()
       .sort((a, b) => {
         const left = a.lastVisitAt ? new Date(a.lastVisitAt).getTime() : 0;
         const right = b.lastVisitAt ? new Date(b.lastVisitAt).getTime() : 0;
         return right - left;
-      })
-      .slice(0, 12);
+      });
   }, [data]);
+
+  const currentSitesPreview = useMemo(
+    () => currentSites.slice(0, 12),
+    [currentSites],
+  );
 
   const sessionPages = useMemo(() => {
     if (!data?.vpn.recentSessions?.length) return 1;
@@ -349,13 +365,13 @@ export default function AdminUserDetailsPage() {
               </Badge>
             </div>
 
-            {currentSites.length === 0 ? (
+            {currentSitesPreview.length === 0 ? (
               <div className="rounded-[1.5rem] border border-dashed border-border/70 px-5 py-8 text-sm italic text-muted-foreground">
                 Сейчас нет доменов с новой VPN-активностью.
               </div>
             ) : (
               <div className="space-y-3">
-                {currentSites.map((site) => (
+                {currentSitesPreview.map((site) => (
                   <div
                     key={`${site.domain}:${site.lastVisitAt ?? "none"}`}
                     className="rounded-[1.5rem] border border-border/50 px-5 py-4 flex items-start justify-between gap-3"
@@ -581,6 +597,15 @@ export default function AdminUserDetailsPage() {
             </p>
           </div>
         </div>
+
+        {false && <CurrentDomainStats
+          domains={currentSites}
+          title="РђРєС‚РёРІРЅС‹Рµ РґРѕРјРµРЅС‹"
+          subtitle="РџРѕР»РЅР°СЏ РІС‹РґР°С‡Р° С‚РµРєСѓС‰РµР№ VPN-Р°РєС‚РёРІРЅРѕСЃС‚Рё СЃ РїР°РіРёРЅР°С†РёРµР№"
+          emptyText="Р—РґРµСЃСЊ РїРѕСЏРІСЏС‚СЃСЏ РІСЃРµ РґРѕРјРµРЅС‹, РєРѕС‚РѕСЂС‹Рµ СѓРґР°Р»РѕСЃСЊ РїРѕР№РјР°С‚СЊ РІ РїРѕСЃР»РµРґРЅРёРµ 2 РјРёРЅСѓС‚С‹."
+        />}
+
+        <CurrentDomainStats domains={currentSites} />
 
         <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
           <div className="bg-card border border-border/60 rounded-[2.5rem] p-8 space-y-6">

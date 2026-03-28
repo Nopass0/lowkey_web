@@ -10,9 +10,9 @@ import { resolveVpnPolicyForUser } from "../../vpn/policy";
 
 const ACTIVE_VPN_SESSION_STALE_MS = 5 * 60 * 1000;
 const ACTIVE_DOMAIN_WINDOW_MS = 2 * 60 * 1000;
-const SESSION_HISTORY_LIMIT = 100;
-const DOMAIN_HISTORY_LIMIT = 500;
-const ACTIVE_DOMAIN_LIMIT = 20;
+const SESSION_HISTORY_LIMIT = 200;
+const DOMAIN_HISTORY_LIMIT = 1000;
+const ACTIVE_DOMAIN_LIMIT = 100;
 
 function parseOptionalBooleanFilter(value?: string) {
   if (value === "true") return true;
@@ -500,7 +500,22 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
 
         const mappedDomainStats = domainDocs.map(mapDomainStat);
 
-        const activeDomains = activeDomainDocs
+        const fallbackActiveDomainDocs =
+          activeDomainDocs.length > 0
+            ? activeDomainDocs
+            : domainDocs
+                .filter((doc) => {
+                  if (!doc.lastVisitAt) {
+                    return false;
+                  }
+                  return (
+                    new Date(doc.lastVisitAt).getTime() >=
+                    activeDomainCutoff.getTime()
+                  );
+                })
+                .slice(0, ACTIVE_DOMAIN_LIMIT);
+
+        const activeDomains = fallbackActiveDomainDocs
           .map(mapDomainStat)
           .sort((a, b) => {
             const left = a.lastVisitAt ? new Date(a.lastVisitAt).getTime() : 0;
