@@ -29,10 +29,31 @@ function buildVlessLink(
   }
 
   const serverAddress = serverHost || serverIp;
-  return template
+  let link = template
     .replaceAll("{uuid}", userId)
     .replaceAll("{ip}", serverIp)
     .replaceAll("{host}", serverAddress);
+
+  if (link.includes("vless://")) {
+    const [baseUrl, tag] = link.split("#");
+    let normalized = baseUrl;
+    if (!normalized.includes("type=")) {
+      const separator = normalized.includes("?") ? "&" : "?";
+      normalized = `${normalized}${separator}type=tcp`;
+    }
+    if (
+      normalized.includes("security=reality") &&
+      !normalized.includes("flow=")
+    ) {
+      normalized = normalized.replace(
+        "security=reality",
+        "flow=xtls-rprx-vision&security=reality",
+      );
+    }
+    link = `${normalized}${tag ? `#${tag}` : ""}`;
+  }
+
+  return link;
 }
 
 /**

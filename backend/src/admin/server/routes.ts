@@ -40,10 +40,23 @@ function normalizeConnectLinkTemplate(value?: string | null) {
     return null;
   }
 
-  if (trimmed.includes("vless://") && !trimmed.includes("type=")) {
+  if (trimmed.includes("vless://")) {
     const [baseUrl, tag] = trimmed.split("#");
-    const separator = baseUrl.includes("?") ? "&" : "?";
-    return `${baseUrl}${separator}type=tcp${tag ? `#${tag}` : ""}`;
+    let normalized = baseUrl;
+    if (!normalized.includes("type=")) {
+      const separator = normalized.includes("?") ? "&" : "?";
+      normalized = `${normalized}${separator}type=tcp`;
+    }
+    if (
+      normalized.includes("security=reality") &&
+      !normalized.includes("flow=")
+    ) {
+      normalized = normalized.replace(
+        "security=reality",
+        "flow=xtls-rprx-vision&security=reality",
+      );
+    }
+    return `${normalized}${tag ? `#${tag}` : ""}`;
   }
 
   return trimmed;
@@ -188,9 +201,9 @@ function serializeServer(server: NonNullable<VpnServerRow>) {
       ? server.supportedProtocols.map((item: unknown) => String(item))
       : [],
     location: String(server.location ?? "Unknown, UN"),
-    connectLinkTemplate: server.connectLinkTemplate
-      ? String(server.connectLinkTemplate)
-      : null,
+    connectLinkTemplate: normalizeConnectLinkTemplate(
+      server.connectLinkTemplate ? String(server.connectLinkTemplate) : null,
+    ),
   };
 }
 
