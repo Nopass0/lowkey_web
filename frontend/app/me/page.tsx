@@ -453,18 +453,56 @@ export default function DashboardPage() {
                         </>
                       )}
                     </Button>
-                    {profile.vpnAccess.mtprotoShareLink && (
+                    {profile.vpnAccess.mtprotoLink && (
                       <Button
                         asChild
                         variant="outline"
                         className="cursor-pointer shadow-none"
                       >
-                        <Link
-                          href={profile.vpnAccess.mtprotoShareLink}
+                        <a
+                          href={profile.vpnAccess.mtprotoLink}
                           target="_blank"
+                          rel="noreferrer"
                         >
-                          Open in Telegram
-                        </Link>
+                          Открыть в Telegram
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                  <div className="hidden items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="cursor-pointer shadow-none"
+                      onClick={() =>
+                        copyToClipboard(profile.vpnAccess!.mtprotoLink!, "mtproto")
+                      }
+                    >
+                      {copiedKey === "mtproto" ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Скопировано
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Копировать
+                        </>
+                      )}
+                    </Button>
+                    {profile.vpnAccess.mtprotoLink && (
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="cursor-pointer shadow-none"
+                      >
+                        <a
+                          href={profile.vpnAccess.mtprotoLink}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Открыть в Telegram
+                        </a>
                       </Button>
                     )}
                   </div>
@@ -489,20 +527,19 @@ export default function DashboardPage() {
                         </>
                       )}
                     </Button>
-                    {profile.vpnAccess.mtprotoShareLink && (
-                      <Button
-                        asChild
-                        variant="outline"
-                        className="cursor-pointer shadow-none"
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="cursor-pointer shadow-none"
+                    >
+                      <a
+                        href={profile.vpnAccess.mtprotoLink}
+                        target="_blank"
+                        rel="noreferrer"
                       >
-                        <Link
-                          href={profile.vpnAccess.mtprotoShareLink}
-                          target="_blank"
-                        >
-                          Открыть в Telegram
-                        </Link>
-                      </Button>
-                    )}
+                        Открыть в Telegram
+                      </a>
+                    </Button>
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-background px-4 py-3 font-mono text-xs leading-6 break-all">
