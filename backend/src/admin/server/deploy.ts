@@ -135,6 +135,7 @@ export DEBIAN_FRONTEND=noninteractive
 REPO_URL="$(printf '%s' '${repoUrl}' | base64 -d)"
 BASE_DIR="$(printf '%s' '${baseDir}' | base64 -d)"
 APP_DIR="$BASE_DIR"
+BACKUP_DIR=""
 PM2_NAME="${server.pm2ProcessName}"
 HOSTNAME_VALUE="${server.hostname}"
 LETSENCRYPT_EMAIL_VALUE="$(printf '%s' '${letsencryptEmail}' | base64 -d)"
@@ -190,14 +191,22 @@ run_root apt-get update
 run_root apt-get install -y ca-certificates curl git certbot libcap2-bin tar unzip iptables iproute2
 ensure_go_toolchain
 
+run_root mkdir -p "$(dirname "$BASE_DIR")"
+
+if [ -d "$BASE_DIR" ] && [ ! -d "$BASE_DIR/.git" ] && [ -n "$(ls -A "$BASE_DIR" 2>/dev/null)" ]; then
+  BACKUP_DIR="$BASE_DIR.backup-$(date +%Y%m%d%H%M%S)"
+  run_root mv "$BASE_DIR" "$BACKUP_DIR"
+fi
+
+if [ -d "$BASE_DIR/.git" ] && [ -n "$(git -C "$BASE_DIR" status --porcelain 2>/dev/null)" ]; then
+  BACKUP_DIR="$BASE_DIR.backup-$(date +%Y%m%d%H%M%S)"
+  run_root mv "$BASE_DIR" "$BACKUP_DIR"
+fi
+
 run_root mkdir -p "$BASE_DIR"
 run_root chown -R "$(id -u):$(id -g)" "$BASE_DIR"
 
 if [ ! -d "$BASE_DIR/.git" ]; then
-  if [ -n "$(ls -A "$BASE_DIR" 2>/dev/null)" ]; then
-    echo "Deployment directory exists but is not a git clone: $BASE_DIR" >&2
-    exit 1
-  fi
   git clone "$REPO_URL" "$BASE_DIR"
 else
   git -C "$BASE_DIR" fetch origin main --tags
