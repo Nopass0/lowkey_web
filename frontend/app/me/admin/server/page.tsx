@@ -17,6 +17,13 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient } from "@/api/client";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,6 +44,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -71,6 +79,17 @@ interface ServerFormState {
   connectLinkTemplate: string;
 }
 
+interface AdminMtprotoSettings {
+  id?: string;
+  enabled: boolean;
+  port: number;
+  secret: string;
+  adTag: string;
+  channelUsername: string;
+  botUsername: string;
+  addChannelOnConnect: boolean;
+}
+
 const EMPTY_SERVER_FORM: ServerFormState = {
   ip: "",
   hostname: "",
@@ -79,6 +98,16 @@ const EMPTY_SERVER_FORM: ServerFormState = {
   sshPassword: "",
   pm2ProcessName: "",
   connectLinkTemplate: "",
+};
+
+const EMPTY_MTPROTO_SETTINGS: AdminMtprotoSettings = {
+  enabled: false,
+  port: 8443,
+  secret: "",
+  adTag: "",
+  channelUsername: "",
+  botUsername: "",
+  addChannelOnConnect: false,
 };
 
 function getErrorMessage(error: unknown) {
@@ -155,6 +184,186 @@ function renderDeployBadge(status: string) {
   }
 
   return <Badge variant="outline">{status}</Badge>;
+}
+
+function generateMtprotoSecret() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `dd${Array.from(bytes, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
+function MtprotoSettingsCard({
+  settings,
+  setSettings,
+  onSave,
+  loading,
+  saving,
+}: {
+  settings: AdminMtprotoSettings;
+  setSettings: Dispatch<SetStateAction<AdminMtprotoSettings>>;
+  onSave: () => Promise<void>;
+  loading: boolean;
+  saving: boolean;
+}) {
+  const updateField = <K extends keyof AdminMtprotoSettings>(
+    field: K,
+    value: AdminMtprotoSettings[K],
+  ) => {
+    setSettings((prev) => ({ ...prev, [field]: value }));
+  };
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader>
+        <CardTitle>MTProto Proxy</CardTitle>
+        <CardDescription>
+          Отдельный Telegram MTProto-прокси для VPN-нод. Sponsor-показ в
+          Telegram работает по `adTag`, который выдаёт официальный{" "}
+          <code>@MTProxybot</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Загружаю настройки MTProto...
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-medium">Включить MTProto</div>
+                <div className="text-xs text-muted-foreground">
+                  При деплое на ноде будет поднят отдельный PM2-процесс
+                  `&lt;pm2&gt;-mtproto`.
+                </div>
+              </div>
+              <Switch
+                checked={settings.enabled}
+                onCheckedChange={(checked) => updateField("enabled", checked)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>MTProto port</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={settings.port}
+                  onChange={(event) =>
+                    updateField(
+                      "port",
+                      Math.max(1, Number.parseInt(event.target.value || "8443", 10)),
+                    )
+                  }
+                  placeholder="8443"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>MTProto secret</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={settings.secret}
+                    onChange={(event) =>
+                      updateField("secret", event.target.value)
+                    }
+                    placeholder="dd0123456789abcdef0123456789abcdef"
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => updateField("secret", generateMtprotoSecret())}
+                  >
+                    Сгенерировать
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Используйте формат `dd...` или `ee...`. Для обычного деплоя
+                  рекомендуем `dd`.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-medium">
+                    Показывать sponsor channel / bot
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Для реального sponsor-показа в Telegram нужен `adTag` от{" "}
+                    <code>@MTProxybot</code>. Username ниже нужен для панели и
+                    контроля.
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.addChannelOnConnect}
+                  onCheckedChange={(checked) =>
+                    updateField("addChannelOnConnect", checked)
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                <div className="space-y-2 md:col-span-1">
+                  <Label>Ad tag from @MTProxybot</Label>
+                  <Input
+                    value={settings.adTag}
+                    onChange={(event) => updateField("adTag", event.target.value)}
+                    placeholder="cae554f8cbafba5b343a2d4f72e2f8e4"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sponsor channel</Label>
+                  <Input
+                    value={settings.channelUsername}
+                    onChange={(event) =>
+                      updateField("channelUsername", event.target.value)
+                    }
+                    placeholder="@lowkeyvpn"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sponsor bot</Label>
+                  <Input
+                    value={settings.botUsername}
+                    onChange={(event) =>
+                      updateField("botUsername", event.target.value)
+                    }
+                    placeholder="@lowkeyvpnbot"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-xs text-muted-foreground">
+                Сначала зарегистрируйте прокси в <code>@MTProxybot</code> и
+                получите `adTag`, потом сохраните настройки и выполните redeploy
+                ноды.
+              </p>
+              <Button onClick={() => void onSave()} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Сохраняю...
+                  </>
+                ) : (
+                  "Сохранить MTProto"
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function ServerFormFields({
@@ -399,6 +608,10 @@ export default function AdminServersPage() {
   const [servers, setServers] = useState<VpnServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [mtprotoLoading, setMtprotoLoading] = useState(true);
+  const [mtprotoSaving, setMtprotoSaving] = useState(false);
+  const [mtprotoSettings, setMtprotoSettings] =
+    useState<AdminMtprotoSettings>(EMPTY_MTPROTO_SETTINGS);
   const [createOpen, setCreateOpen] = useState(false);
   const [deployingIds, setDeployingIds] = useState<string[]>([]);
 
@@ -422,11 +635,39 @@ export default function AdminServersPage() {
     [],
   );
 
+  const fetchMtprotoSettings = useCallback(async () => {
+    try {
+      const data = await apiClient.get<Partial<AdminMtprotoSettings>>(
+        "/admin/server/mtproto",
+      );
+      setMtprotoSettings({
+        ...EMPTY_MTPROTO_SETTINGS,
+        ...data,
+        enabled: Boolean(data.enabled),
+        port:
+          typeof data.port === "number" && Number.isFinite(data.port)
+            ? data.port
+            : EMPTY_MTPROTO_SETTINGS.port,
+        secret: data.secret ?? "",
+        adTag: data.adTag ?? "",
+        channelUsername: data.channelUsername ?? "",
+        botUsername: data.botUsername ?? "",
+        addChannelOnConnect: Boolean(data.addChannelOnConnect),
+      });
+    } catch (error) {
+      console.error("Failed to fetch MTProto settings", error);
+      toast.error(getErrorMessage(error));
+    } finally {
+      setMtprotoLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (user?.isAdmin) {
       void fetchServers();
+      void fetchMtprotoSettings();
     }
-  }, [fetchServers, user]);
+  }, [fetchMtprotoSettings, fetchServers, user]);
 
   useEffect(() => {
     if (!servers.some((server) => server.deployStatus === "deploying")) {
@@ -497,6 +738,45 @@ export default function AdminServersPage() {
     }
   };
 
+  const handleSaveMtproto = async () => {
+    setMtprotoSaving(true);
+    try {
+      const data = await apiClient.patch<Partial<AdminMtprotoSettings>>(
+        "/admin/server/mtproto",
+        {
+          enabled: mtprotoSettings.enabled,
+          port: mtprotoSettings.port,
+          secret: mtprotoSettings.secret || null,
+          adTag: mtprotoSettings.adTag || null,
+          channelUsername: mtprotoSettings.channelUsername || null,
+          botUsername: mtprotoSettings.botUsername || null,
+          addChannelOnConnect: mtprotoSettings.addChannelOnConnect,
+        },
+      );
+
+      setMtprotoSettings({
+        ...EMPTY_MTPROTO_SETTINGS,
+        ...data,
+        enabled: Boolean(data.enabled),
+        port:
+          typeof data.port === "number" && Number.isFinite(data.port)
+            ? data.port
+            : EMPTY_MTPROTO_SETTINGS.port,
+        secret: data.secret ?? "",
+        adTag: data.adTag ?? "",
+        channelUsername: data.channelUsername ?? "",
+        botUsername: data.botUsername ?? "",
+        addChannelOnConnect: Boolean(data.addChannelOnConnect),
+      });
+      toast.success("MTProto settings saved");
+    } catch (error) {
+      console.error("Failed to save MTProto settings", error);
+      toast.error(getErrorMessage(error));
+    } finally {
+      setMtprotoSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
@@ -536,6 +816,16 @@ export default function AdminServersPage() {
             Добавить сервер
           </Button>
         </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border bg-card">
+        <MtprotoSettingsCard
+          settings={mtprotoSettings}
+          setSettings={setMtprotoSettings}
+          onSave={handleSaveMtproto}
+          loading={mtprotoLoading}
+          saving={mtprotoSaving}
+        />
       </div>
 
       <div className="overflow-hidden rounded-2xl border bg-card">

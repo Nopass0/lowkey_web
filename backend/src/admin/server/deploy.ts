@@ -5,6 +5,7 @@ type MtprotoSettings = {
   enabled?: boolean | null;
   port?: number | null;
   secret?: string | null;
+  adTag?: string | null;
   botUsername?: string | null;
   channelUsername?: string | null;
   addChannelOnConnect?: boolean | null;
@@ -69,6 +70,34 @@ function buildEnvFile(server: DeployServerInput, mtproto: MtprotoSettings) {
   if (config.TOCHKA_ACCOUNT_ID) {
     env.set("TOCHKA_ACCOUNT_ID", config.TOCHKA_ACCOUNT_ID);
   }
+
+  const mtprotoEnabled = Boolean(mtproto.enabled && mtproto.secret);
+  env.set("MTPROTO_ENABLED", mtprotoEnabled ? "true" : "false");
+  env.set(
+    "MTPROTO_PORT",
+    String(
+      typeof mtproto.port === "number" && Number.isFinite(mtproto.port)
+        ? Math.max(1, Math.trunc(mtproto.port))
+        : 8443,
+    ),
+  );
+
+  if (mtproto.secret) {
+    env.set("MTPROTO_SECRET", mtproto.secret);
+  }
+  if (mtproto.adTag) {
+    env.set("MTPROTO_AD_TAG", mtproto.adTag);
+  }
+  if (mtproto.channelUsername) {
+    env.set("MTPROTO_CHANNEL_USERNAME", mtproto.channelUsername);
+  }
+  if (mtproto.botUsername) {
+    env.set("MTPROTO_BOT_USERNAME", mtproto.botUsername);
+  }
+  env.set(
+    "MTPROTO_ADD_CHANNEL",
+    mtproto.addChannelOnConnect ? "true" : "false",
+  );
 
   return [...env.entries()]
     .filter(([, value]) => value !== "")

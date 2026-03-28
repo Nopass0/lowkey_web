@@ -601,7 +601,7 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
   },
   mtprotoSettings: {
     collection: "mtproto_settings",
-    fields: ["id", "enabled", "port", "secret", "channelUsername", "botUsername", "addChannelOnConnect", "createdAt", "updatedAt"],
+    fields: ["id", "enabled", "port", "secret", "adTag", "channelUsername", "botUsername", "addChannelOnConnect", "createdAt", "updatedAt"],
     dateFields: ["createdAt", "updatedAt"],
   },
 };

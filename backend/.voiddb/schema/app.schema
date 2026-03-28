@@ -427,8 +427,9 @@ database {
   model LowkeyMtprotoSettings {
     id String @id @default("global") @map("_id")
     enabled Boolean @default(false)
-    port Int @default(443)
+    port Int @default(8443)
     secret String?
+    adTag String?
     channelUsername String?
     botUsername String?
     addChannelOnConnect Boolean @default(false)

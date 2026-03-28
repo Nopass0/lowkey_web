@@ -1,4 +1,5 @@
 import Elysia, { t } from "elysia";
+import crypto from "crypto";
 import { db } from "../../db";
 import { adminMiddleware } from "../../auth/middleware";
 import { config } from "../../config";
@@ -32,6 +33,54 @@ function normalizeOptionalString(value?: string | null) {
 function normalizeHostname(value?: string | null) {
   const normalized = normalizeOptionalString(value);
   return normalized ? normalized.toLowerCase() : null;
+}
+
+function normalizeTelegramUsername(value?: string | null) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const username = normalized.replace(/^@+/, "").trim();
+  if (!username) {
+    return null;
+  }
+
+  return `@${username}`;
+}
+
+function normalizeMtprotoAdTag(value?: string | null) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const adTag = normalized.toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(adTag)) {
+    throw new Error("MTProto ad tag must be 32 hex characters");
+  }
+
+  return adTag;
+}
+
+function normalizeMtprotoSecret(value?: string | null) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const secret = normalized.toLowerCase();
+  if (!/^(dd|ee)[0-9a-f]{32}$/.test(secret)) {
+    throw new Error(
+      "MTProto secret must start with dd or ee and contain 32 hex characters after the prefix",
+    );
+  }
+
+  return secret;
+}
+
+function generateMtprotoSecret() {
+  return `dd${crypto.randomBytes(16).toString("hex")}`;
 }
 
 function normalizeConnectLinkTemplate(value?: string | null) {
@@ -554,8 +603,9 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
         settings ?? {
           id: "global",
           enabled: false,
-          port: 443,
+          port: 8443,
           secret: null,
+          adTag: null,
           channelUsername: null,
           botUsername: null,
           addChannelOnConnect: false,
@@ -571,21 +621,43 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
     "/mtproto",
     async ({ body, set }) => {
       try {
+        const normalizedPayload = {
+          ...body,
+          port:
+            typeof body.port === "number" && Number.isFinite(body.port)
+              ? Math.max(1, Math.trunc(body.port))
+              : body.port,
+          secret: normalizeMtprotoSecret(body.secret),
+          adTag: normalizeMtprotoAdTag(body.adTag),
+          channelUsername: normalizeTelegramUsername(body.channelUsername),
+          botUsername: normalizeTelegramUsername(body.botUsername),
+        };
+
         const existing = await db.mtprotoSettings.findFirst({});
+        if (normalizedPayload.enabled && !normalizedPayload.secret && !existing?.secret) {
+          normalizedPayload.secret = generateMtprotoSecret();
+        }
+
         if (existing) {
           return await db.mtprotoSettings.update({
             where: { id: "global" },
-            data: body,
+            data: normalizedPayload,
           });
         }
 
         return await db.mtprotoSettings.create({
-          data: { id: "global", ...body },
+          data: { id: "global", ...normalizedPayload },
         });
       } catch (error) {
         console.error("[AdminServerMtprotoPatch] error:", error);
-        set.status = 500;
-        return { message: "Internal server error" };
+        set.status =
+          error instanceof Error && error.message.startsWith("MTProto")
+            ? 400
+            : 500;
+        return {
+          message:
+            error instanceof Error ? error.message : "Internal server error",
+        };
       }
     },
     {
@@ -593,6 +665,7 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
         enabled: t.Optional(t.Boolean()),
         port: t.Optional(t.Number()),
         secret: t.Optional(t.Nullable(t.String())),
+        adTag: t.Optional(t.Nullable(t.String())),
         channelUsername: t.Optional(t.Nullable(t.String())),
         botUsername: t.Optional(t.Nullable(t.String())),
         addChannelOnConnect: t.Optional(t.Boolean()),
