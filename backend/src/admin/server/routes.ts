@@ -70,17 +70,39 @@ function normalizeMtprotoSecret(value?: string | null) {
   }
 
   const secret = normalized.toLowerCase();
-  if (!/^(dd|ee)[0-9a-f]{32}$/.test(secret)) {
+  if (!/^(?:[0-9a-f]{32}|(?:dd|ee)[0-9a-f]{32})$/.test(secret)) {
     throw new Error(
-      "MTProto secret must start with dd or ee and contain 32 hex characters after the prefix",
+      "MTProto secret must contain 32 hex characters; dd/ee prefix is optional",
     );
   }
 
-  return secret;
+  return /^(dd|ee)/.test(secret) ? secret.slice(2) : secret;
 }
 
 function generateMtprotoSecret() {
-  return `dd${crypto.randomBytes(16).toString("hex")}`;
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function serializeMtprotoSecret(value?: string | null) {
+  const secret = normalizeOptionalString(value)?.toLowerCase();
+  if (!secret) {
+    return null;
+  }
+  return /^(dd|ee)[0-9a-f]{32}$/.test(secret) ? secret.slice(2) : secret;
+}
+
+function toPublishedMtprotoSecret(value?: string | null) {
+  const secret = normalizeOptionalString(value)?.toLowerCase();
+  if (!secret) {
+    return null;
+  }
+  if (/^(dd|ee)[0-9a-f]{32}$/.test(secret)) {
+    return secret;
+  }
+  if (/^[0-9a-f]{32}$/.test(secret)) {
+    return `dd${secret}`;
+  }
+  return secret;
 }
 
 function normalizeConnectLinkTemplate(value?: string | null) {
@@ -599,8 +621,8 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
   .get("/mtproto", async ({ set }) => {
     try {
       const settings = await db.mtprotoSettings.findFirst({});
-      return (
-        settings ?? {
+      if (!settings) {
+        return {
           id: "global",
           enabled: false,
           port: 8443,
@@ -609,8 +631,13 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
           channelUsername: null,
           botUsername: null,
           addChannelOnConnect: false,
-        }
-      );
+        };
+      }
+
+      return {
+        ...settings,
+        secret: serializeMtprotoSecret(settings.secret),
+      };
     } catch (error) {
       console.error("[AdminServerMtprotoGet] error:", error);
       set.status = 500;
@@ -627,7 +654,7 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
             typeof body.port === "number" && Number.isFinite(body.port)
               ? Math.max(1, Math.trunc(body.port))
               : body.port,
-          secret: normalizeMtprotoSecret(body.secret),
+          secret: toPublishedMtprotoSecret(normalizeMtprotoSecret(body.secret)),
           adTag: normalizeMtprotoAdTag(body.adTag),
           channelUsername: normalizeTelegramUsername(body.channelUsername),
           botUsername: normalizeTelegramUsername(body.botUsername),

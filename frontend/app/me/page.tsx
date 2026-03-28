@@ -429,10 +429,10 @@ export default function DashboardPage() {
                       MTProto Proxy
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Copy this link or open it directly in Telegram.
+                      Скопируйте ссылку или откройте её сразу в Telegram.
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="hidden items-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -464,6 +464,42 @@ export default function DashboardPage() {
                           target="_blank"
                         >
                           Open in Telegram
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="cursor-pointer shadow-none"
+                      onClick={() =>
+                        copyToClipboard(profile.vpnAccess!.mtprotoLink!, "mtproto")
+                      }
+                    >
+                      {copiedKey === "mtproto" ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Скопировано
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Копировать
+                        </>
+                      )}
+                    </Button>
+                    {profile.vpnAccess.mtprotoShareLink && (
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="cursor-pointer shadow-none"
+                      >
+                        <Link
+                          href={profile.vpnAccess.mtprotoShareLink}
+                          target="_blank"
+                        >
+                          Открыть в Telegram
                         </Link>
                       </Button>
                     )}

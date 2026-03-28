@@ -31,8 +31,23 @@ function ensureProvisioningConfig() {
   }
 }
 
+function toMtprotoNodeSecret(value?: string | null) {
+  const secret = value?.trim().toLowerCase();
+  if (!secret) {
+    return null;
+  }
+  if (/^(dd|ee)[0-9a-f]{32}$/.test(secret)) {
+    return secret;
+  }
+  if (/^[0-9a-f]{32}$/.test(secret)) {
+    return `dd${secret}`;
+  }
+  return secret;
+}
+
 function buildEnvFile(server: DeployServerInput, mtproto: MtprotoSettings) {
   ensureProvisioningConfig();
+  const mtprotoNodeSecret = toMtprotoNodeSecret(mtproto.secret);
 
   const env = new Map<string, string>([
     ["VOIDDB_URL", config.VOIDDB_URL],
@@ -71,7 +86,7 @@ function buildEnvFile(server: DeployServerInput, mtproto: MtprotoSettings) {
     env.set("TOCHKA_ACCOUNT_ID", config.TOCHKA_ACCOUNT_ID);
   }
 
-  const mtprotoEnabled = Boolean(mtproto.enabled && mtproto.secret);
+  const mtprotoEnabled = Boolean(mtproto.enabled && mtprotoNodeSecret);
   env.set("MTPROTO_ENABLED", mtprotoEnabled ? "true" : "false");
   env.set(
     "MTPROTO_PORT",
@@ -82,8 +97,8 @@ function buildEnvFile(server: DeployServerInput, mtproto: MtprotoSettings) {
     ),
   );
 
-  if (mtproto.secret) {
-    env.set("MTPROTO_SECRET", mtproto.secret);
+  if (mtprotoNodeSecret) {
+    env.set("MTPROTO_SECRET", mtprotoNodeSecret);
   }
   if (mtproto.adTag) {
     env.set("MTPROTO_AD_TAG", mtproto.adTag);

@@ -189,9 +189,9 @@ function renderDeployBadge(status: string) {
 function generateMtprotoSecret() {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  return `dd${Array.from(bytes, (value) =>
+  return Array.from(bytes, (value) =>
     value.toString(16).padStart(2, "0"),
-  ).join("")}`;
+  ).join("");
 }
 
 function MtprotoSettingsCard({
@@ -263,11 +263,11 @@ function MtprotoSettingsCard({
                   placeholder="8443"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>MTProto secret</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={settings.secret}
+                <div className="space-y-2">
+                  <Label>MTProto secret</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={settings.secret}
                     onChange={(event) =>
                       updateField("secret", event.target.value)
                     }
@@ -280,14 +280,15 @@ function MtprotoSettingsCard({
                     onClick={() => updateField("secret", generateMtprotoSecret())}
                   >
                     Сгенерировать
-                  </Button>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Здесь хранится raw secret из 32 hex-символов для{" "}
+                    <code>@MTProxybot</code>. Префикс <code>dd</code> backend
+                    добавит сам для ноды и клиентской ссылки.
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Используйте формат `dd...` или `ee...`. Для обычного деплоя
-                  рекомендуем `dd`.
-                </p>
               </div>
-            </div>
 
             <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
