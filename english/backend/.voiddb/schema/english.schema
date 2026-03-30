@@ -1,0 +1,215 @@
+datasource db {
+  provider = "voiddb"
+  url      = env("VOIDDB_URL")
+}
+
+generator client {
+  provider = "voiddb-client-js"
+  output   = "../generated"
+}
+
+database {
+  name = "english"
+
+  model EnglishUsers {
+    id String @id @map("_id")
+    email String @unique
+    passwordHash String
+    name String
+    avatarUrl String?
+    telegramId String?
+    telegramUsername String?
+    role String @default("user")
+    isPremium Boolean @default(false)
+    premiumUntil DateTime?
+    dailyGoal Int @default(20)
+    studyStreak Int @default(0)
+    lastStudyDate String?
+    timezone String @default("Europe/Moscow")
+    notificationsEnabled Boolean @default(true)
+    notificationTime String @default("09:00")
+    nativeLanguage String @default("ru")
+    level String @default("beginner")
+    xp Int @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishUsers")
+  }
+
+  model EnglishDecks {
+    id String @id @map("_id")
+    userId String
+    name String
+    description String?
+    emoji String @default("📚")
+    color String @default("#6366f1")
+    isPublic Boolean @default(false)
+    cardCount Int @default(0)
+    category String @default("general")
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishDecks")
+  }
+
+  model EnglishCards {
+    id String @id @map("_id")
+    userId String
+    deckId String?
+    front String
+    back String
+    pronunciation String?
+    audioUrl String?
+    imageUrl String?
+    examples Json[]
+    tags Json[]
+    difficulty Int @default(1)
+    nextReview DateTime @default(now())
+    lastReview DateTime?
+    reviewCount Int @default(0)
+    correctCount Int @default(0)
+    easeFactor Float @default(2.5)
+    interval Int @default(1)
+    repetitions Int @default(0)
+    status String @default("new")
+    aiGenerated Boolean @default(false)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishCards")
+  }
+
+  model EnglishStudySessions {
+    id String @id @map("_id")
+    userId String
+    deckId String?
+    mode String
+    totalCards Int @default(0)
+    correctCards Int @default(0)
+    incorrectCards Int @default(0)
+    durationSeconds Int @default(0)
+    xpEarned Int @default(0)
+    completedAt DateTime?
+    createdAt DateTime @default(now())
+    @@map("EnglishStudySessions")
+  }
+
+  model EnglishCardReviews {
+    id String @id @map("_id")
+    userId String
+    cardId String
+    sessionId String?
+    quality Int
+    previousInterval Int
+    newInterval Int
+    previousEaseFactor Float
+    newEaseFactor Float
+    createdAt DateTime @default(now())
+    @@map("EnglishCardReviews")
+  }
+
+  model EnglishRecordings {
+    id String @id @map("_id")
+    userId String
+    cardId String?
+    title String
+    audioUrl String
+    transcription String?
+    durationSeconds Int @default(0)
+    score Float?
+    feedback String?
+    type String @default("practice")
+    createdAt DateTime @default(now())
+    @@map("EnglishRecordings")
+  }
+
+  model EnglishProgress {
+    id String @id @map("_id")
+    userId String
+    date String
+    cardsStudied Int @default(0)
+    cardsCorrect Int @default(0)
+    minutesStudied Int @default(0)
+    xpEarned Int @default(0)
+    streak Int @default(0)
+    goalsCompleted Boolean @default(false)
+    createdAt DateTime @default(now())
+    @@map("EnglishProgress")
+  }
+
+  model EnglishGameSessions {
+    id String @id @map("_id")
+    userId String
+    gameType String
+    score Int @default(0)
+    totalRounds Int @default(0)
+    correctAnswers Int @default(0)
+    durationSeconds Int @default(0)
+    xpEarned Int @default(0)
+    wordsLearned Json[]
+    createdAt DateTime @default(now())
+    @@map("EnglishGameSessions")
+  }
+
+  model EnglishSubscriptions {
+    id String @id @map("_id")
+    userId String
+    planId String
+    status String @default("active")
+    startsAt DateTime
+    endsAt DateTime
+    paymentId String?
+    autoRenew Boolean @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishSubscriptions")
+  }
+
+  model EnglishSubscriptionPlans {
+    id String @id @map("_id")
+    name String
+    slug String @unique
+    description String
+    price Float
+    currency String @default("RUB")
+    intervalDays Int
+    features Json[]
+    isActive Boolean @default(true)
+    createdAt DateTime @default(now())
+    @@map("EnglishSubscriptionPlans")
+  }
+
+  model EnglishPayments {
+    id String @id @map("_id")
+    userId String
+    planId String?
+    yokassaPaymentId String?
+    amount Float
+    currency String @default("RUB")
+    status String @default("pending")
+    description String?
+    metadata Json?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishPayments")
+  }
+
+  model EnglishTelegramLinks {
+    id String @id @map("_id")
+    userId String @unique
+    telegramId String @unique
+    telegramUsername String?
+    firstName String?
+    isActive Boolean @default(true)
+    createdAt DateTime @default(now())
+    @@map("EnglishTelegramLinks")
+  }
+
+  model EnglishDailyReminders {
+    id String @id @map("_id")
+    userId String
+    telegramId String
+    sentAt DateTime @default(now())
+    type String @default("daily_review")
+    cardsToReview Int @default(0)
+    @@map("EnglishDailyReminders")
+  }
+}

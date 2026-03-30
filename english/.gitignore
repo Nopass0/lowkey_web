@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.logs/
+.dev/
+backend/node_modules/
+backend/dist/
+backend/uploads/
+frontend/node_modules/
+frontend/.env.local
+backend/.env
+.env.compose
+deploy/runtime/
+tmp-test/

@@ -1,0 +1,20 @@
+{
+  "name": "english-lowkey",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js start",
+    "dev:backend": "cd backend && bun run dev",
+    "dev:frontend": "cd frontend && npm run dev -- --hostname 0.0.0.0 --port 3003",
+    "install:all": "cd backend && bun install && cd ../frontend && npm install --legacy-peer-deps",
+    "sync-db": "cd backend && bun run sync-db",
+    "bitllm:start": "node scripts/bitllm.js start",
+    "bitllm:stop": "node scripts/bitllm.js stop",
+    "bitllm:status": "node scripts/bitllm.js status",
+    "bitllm:download": "node scripts/bitllm.js download",
+    "stop": "node scripts/dev.js stop",
+    "status": "node scripts/dev.js status",
+    "compose:up": "docker compose --env-file .env.compose up -d --build",
+    "compose:down": "docker compose --env-file .env.compose down"
+  }
+}
