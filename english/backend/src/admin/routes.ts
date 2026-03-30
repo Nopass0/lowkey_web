@@ -2,6 +2,7 @@ import Elysia, { t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import { db } from "../db";
 import { config } from "../config";
+import { getPublicAiSettings, saveAiSettings } from "../ai/settings";
 
 async function getAdmin(headers: any, jwtInstance: any, set: any) {
   const token = headers.authorization?.replace("Bearer ", "");
@@ -39,6 +40,27 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
     const activeToday = todayProgress.length;
 
     return { totalUsers, premiumUsers, totalCards, totalPayments, totalRevenue, activeToday };
+  })
+
+  .get("/ai-settings", async ({ headers, jwt, set }) => {
+    await getAdmin(headers, jwt, set);
+    return getPublicAiSettings();
+  })
+
+  .patch("/ai-settings", async ({ headers, body, jwt, set }) => {
+    await getAdmin(headers, jwt, set);
+    return saveAiSettings(body);
+  }, {
+    body: t.Object({
+      apiKey: t.Optional(t.String()),
+      clearApiKey: t.Optional(t.Boolean()),
+      model: t.Optional(t.String()),
+      baseUrl: t.Optional(t.String()),
+      siteUrl: t.Optional(t.String()),
+      siteName: t.Optional(t.String()),
+      temperature: t.Optional(t.Number()),
+      maxTokens: t.Optional(t.Number()),
+    }),
   })
 
   .get("/users", async ({ headers, query, jwt, set }) => {

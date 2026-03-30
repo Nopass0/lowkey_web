@@ -1,31 +1,4 @@
 services:
-  bitllm:
-    build:
-      context: ./bitnet
-      args:
-        BITNET_MODEL_REPO: ${BITNET_MODEL_REPO:-1bitLLM/bitnet_b1_58-large}
-        BITNET_MODEL_DIR_NAME: ${BITNET_MODEL_DIR_NAME:-bitnet_b1_58-large}
-        BITNET_QUANT_TYPE: ${BITNET_QUANT_TYPE:-i2_s}
-        BITNET_USE_PRETUNED: ${BITNET_USE_PRETUNED:-1}
-    container_name: english-bitllm
-    restart: unless-stopped
-    environment:
-      BITNET_PORT: 8080
-      BITNET_MODEL_DIR_NAME: ${BITNET_MODEL_DIR_NAME:-bitnet_b1_58-large}
-      BITNET_QUANT_TYPE: ${BITNET_QUANT_TYPE:-i2_s}
-      BITNET_THREADS: ${BITNET_THREADS:-4}
-      BITNET_CTX_SIZE: ${BITNET_CTX_SIZE:-4096}
-      BITNET_TEMPERATURE: ${BITNET_TEMPERATURE:-0.7}
-      BITNET_N_PREDICT: ${BITNET_N_PREDICT:-1024}
-    ports:
-      - "127.0.0.1:${BITLLM_BIND_PORT:-8080}:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/v1/models >/dev/null 2>&1 || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
-
   backend:
     build:
       context: ./backend
@@ -46,11 +19,15 @@ services:
       VOIDDB_TOKEN: ${VOIDDB_TOKEN:-}
       VOIDDB_USERNAME: ${VOIDDB_USERNAME:-}
       VOIDDB_PASSWORD: ${VOIDDB_PASSWORD:-}
-      BITLLM_URL: http://bitllm:8080
+      OPENROUTER_URL: ${OPENROUTER_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://english.lowkey.su}
+      OPENROUTER_SITE_NAME: ${OPENROUTER_SITE_NAME:-LowKey English}
+      OPENROUTER_TEMPERATURE: ${OPENROUTER_TEMPERATURE:-0.7}
+      OPENROUTER_MAX_TOKENS: ${OPENROUTER_MAX_TOKENS:-2048}
       FRONTEND_URL: ${NEXT_PUBLIC_SITE_URL:-https://english.lowkey.su}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://english.lowkey.su}
-    depends_on:
-      - bitllm
     volumes:
       - ./deploy/runtime/${APP_ENV:-main}/uploads:/app/uploads
     healthcheck:

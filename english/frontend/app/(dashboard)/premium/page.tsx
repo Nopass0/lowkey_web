@@ -37,7 +37,7 @@ export default function PremiumPage() {
 
   const features = [
     { icon: Brain, text: "AI-генерация карточек из любого текста", premium: true },
-    { icon: Zap, text: "Быстрый AI (BitLLM Fast) для мгновенных ответов", premium: true },
+    { icon: Zap, text: "Настраиваемый OpenRouter AI для мгновенных ответов", premium: true },
     { icon: Mic, text: "Анализ произношения с детальным разбором", premium: true },
     { icon: Gamepad2, text: "Расширенные игровые режимы", premium: true },
     { icon: Star, text: "Неограниченные карточки и наборы", premium: false },

@@ -1,7 +1,7 @@
 import Elysia, { t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import { db } from "../db";
-import { config } from "../config";
+import { getAiSettings } from "./settings";
 
 async function getUser(headers: any, jwtInstance: any, set: any) {
   const token = headers.authorization?.replace("Bearer ", "");
@@ -13,30 +13,41 @@ async function getUser(headers: any, jwtInstance: any, set: any) {
   return user;
 }
 
-async function callBitLLM(prompt: string, systemPrompt: string, isPremium: boolean) {
-  const model = isPremium ? "bitllm-fast" : "bitllm-base";
+async function callOpenRouter(prompt: string, systemPrompt: string) {
+  const settings = await getAiSettings();
+  if (!settings.apiKey || !settings.model) {
+    return null;
+  }
+
   try {
-    const res = await fetch(`${config.bitllm.url}/v1/chat/completions`, {
+    const res = await fetch(`${settings.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.bitllm.apiKey}`,
+        "Authorization": `Bearer ${settings.apiKey}`,
+        "HTTP-Referer": settings.siteUrl,
+        "X-Title": settings.siteName,
       },
       body: JSON.stringify({
-        model,
+        model: settings.model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
-        max_tokens: 2048,
-        temperature: 0.7,
+        max_tokens: settings.maxTokens,
+        temperature: settings.temperature,
       }),
     });
-    if (!res.ok) throw new Error(`BitLLM error: ${res.status}`);
+
+    if (!res.ok) {
+      const details = await res.text().catch(() => "");
+      throw new Error(`OpenRouter error: ${res.status} ${details.slice(0, 400)}`);
+    }
+
     const data = await res.json();
     return data.choices?.[0]?.message?.content || "";
-  } catch (e) {
-    // Fallback: use a simple rule-based generator for development
+  } catch (error) {
+    console.error("[openrouter]", error);
     return null;
   }
 }
@@ -74,7 +85,7 @@ ${context ? `Context: ${context}` : ""}
 Target translation language: ${targetLanguage}
 Include 2 example sentences, IPA pronunciation, and relevant tags (e.g., noun, verb, business, everyday, etc.)`;
 
-    const aiResponse = await callBitLLM(prompt, systemPrompt, user.isPremium);
+    const aiResponse = await callOpenRouter(prompt, systemPrompt);
 
     let cardData;
     if (aiResponse) {
@@ -112,7 +123,7 @@ Return ONLY valid JSON array:
 
     const prompt = `Extract ${count} key English vocabulary words/phrases from this text and create flashcards:\n\n${text}`;
 
-    const aiResponse = await callBitLLM(prompt, systemPrompt, true);
+    const aiResponse = await callOpenRouter(prompt, systemPrompt);
 
     let cards = [];
     if (aiResponse) {
@@ -155,7 +166,7 @@ ${excludeWords ? `Avoid these recently used words: ${excludeWords}` : ""}
 Create 4 progressive clues (from hard to easy) that help guess the target word.
 Choose an interesting, useful everyday English word.`;
 
-    const aiResponse = await callBitLLM(prompt, systemPrompt, user.isPremium);
+    const aiResponse = await callOpenRouter(prompt, systemPrompt);
 
     let gameData;
     if (aiResponse) {
@@ -204,7 +215,7 @@ Their phonetic attempt: "${transcription}"
 Correct IPA: "${body.correctIpa || word}"
 Analyze their pronunciation accuracy (score 0-100) and provide constructive feedback in Russian.`;
 
-    const aiResponse = await callBitLLM(prompt, systemPrompt, user.isPremium);
+    const aiResponse = await callOpenRouter(prompt, systemPrompt);
 
     let analysis = { score: 70, feedback: "Хорошая попытка! Продолжайте практиковаться.", corrections: [], tips: ["Слушайте носителей языка", "Практикуйтесь каждый день"], phonemes: [] };
 

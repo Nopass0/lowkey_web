@@ -212,4 +212,20 @@ database {
     cardsToReview Int @default(0)
     @@map("EnglishDailyReminders")
   }
+
+  model EnglishSiteSettings {
+    id String @id @map("_id")
+    key String @unique
+    provider String @default("openrouter")
+    openRouterApiKey String?
+    openRouterModel String?
+    openRouterBaseUrl String?
+    siteUrl String?
+    siteName String?
+    temperature Float @default(0.7)
+    maxTokens Int @default(2048)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishSiteSettings")
+  }
 }

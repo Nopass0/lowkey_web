@@ -20,7 +20,6 @@ const IS_WIN = process.platform === "win32";
 const PORTS = {
   backend: Number.parseInt(process.env.BACKEND_PORT || "3002", 10),
   frontend: Number.parseInt(process.env.FRONTEND_PORT || "3003", 10),
-  bitllm: Number.parseInt(process.env.BITLLM_PORT || "8080", 10),
 };
 
 const COLORS = {
@@ -273,6 +272,15 @@ function resolveRuntimeConfig(backendEnvPath) {
       username: process.env.VOIDDB_USERNAME || siteEnv.VOIDDB_USERNAME || backendEnv.VOIDDB_USERNAME || "",
       password: process.env.VOIDDB_PASSWORD || siteEnv.VOIDDB_PASSWORD || backendEnv.VOIDDB_PASSWORD || "",
     },
+    openrouter: {
+      url: (process.env.OPENROUTER_URL || siteEnv.OPENROUTER_URL || backendEnv.OPENROUTER_URL || "https://openrouter.ai/api/v1").replace(/\/$/, ""),
+      apiKey: process.env.OPENROUTER_API_KEY || siteEnv.OPENROUTER_API_KEY || backendEnv.OPENROUTER_API_KEY || "",
+      model: process.env.OPENROUTER_MODEL || siteEnv.OPENROUTER_MODEL || siteEnv.OPENROUTER_DEFAULT_MODEL || backendEnv.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      siteUrl: process.env.OPENROUTER_SITE_URL || backendEnv.OPENROUTER_SITE_URL || `http://localhost:${PORTS.frontend}`,
+      siteName: process.env.OPENROUTER_SITE_NAME || backendEnv.OPENROUTER_SITE_NAME || "LowKey English",
+      temperature: process.env.OPENROUTER_TEMPERATURE || backendEnv.OPENROUTER_TEMPERATURE || "0.7",
+      maxTokens: process.env.OPENROUTER_MAX_TOKENS || backendEnv.OPENROUTER_MAX_TOKENS || "2048",
+    },
   };
 }
 
@@ -296,7 +304,13 @@ function ensureEnvFiles() {
   upsertEnvValue(backendEnvPath, "VOIDDB_USERNAME", runtime.voiddb.username);
   upsertEnvValue(backendEnvPath, "VOIDDB_PASSWORD", runtime.voiddb.password);
   upsertEnvValue(backendEnvPath, "VOIDDB_TOKEN", runtime.voiddb.token);
-  upsertEnvValue(backendEnvPath, "BITLLM_URL", `http://localhost:${PORTS.bitllm}`);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_URL", runtime.openrouter.url);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_API_KEY", runtime.openrouter.apiKey);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_MODEL", runtime.openrouter.model);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_SITE_URL", runtime.openrouter.siteUrl);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_SITE_NAME", runtime.openrouter.siteName);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_TEMPERATURE", runtime.openrouter.temperature);
+  upsertEnvValue(backendEnvPath, "OPENROUTER_MAX_TOKENS", runtime.openrouter.maxTokens);
   upsertEnvValue(backendEnvPath, "FRONTEND_URL", `http://localhost:${PORTS.frontend}`);
   upsertEnvValue(
     backendEnvPath,
@@ -304,6 +318,8 @@ function ensureEnvFiles() {
     `http://localhost:${PORTS.frontend},http://127.0.0.1:${PORTS.frontend},https://english.lowkey.su`
   );
   removeEnvKey(backendEnvPath, "VOIDDB_API_KEY");
+  removeEnvKey(backendEnvPath, "BITLLM_URL");
+  removeEnvKey(backendEnvPath, "BITLLM_API_KEY");
 
   upsertEnvValue(frontendEnvPath, "NEXT_PUBLIC_API_URL", "/api");
   upsertEnvValue(frontendEnvPath, "BACKEND_URL", `http://localhost:${PORTS.backend}`);
@@ -347,20 +363,6 @@ async function syncDb(runtime) {
       VOIDDB_PASSWORD: runtime.voiddb.password,
     },
   });
-}
-
-async function startBitllm() {
-  const ready = await checkHttp(`http://localhost:${PORTS.bitllm}/v1/models`);
-  if (ready) {
-    logOk(`BitLLM already available at http://localhost:${PORTS.bitllm}`);
-    return false;
-  }
-
-  run(process.execPath, [path.join(ROOT_DIR, "scripts", "bitllm.js"), "start"], {
-    env: { BITLLM_PORT: String(PORTS.bitllm) },
-  });
-
-  return true;
 }
 
 function prefixStream(service, stream, logFile, color) {
@@ -429,10 +431,6 @@ function killPid(pid) {
   }
 }
 
-function stopContainer(name) {
-  run("docker", ["rm", "-f", name], { allowFail: true, capture: true });
-}
-
 async function stopAll() {
   const state = readState();
   if (!state) {
@@ -442,10 +440,6 @@ async function stopAll() {
 
   for (const pid of state.pids || []) {
     killPid(pid);
-  }
-
-  for (const container of state.ownedContainers || []) {
-    stopContainer(container);
   }
 
   if (existsSync(STATE_FILE)) {
@@ -461,7 +455,6 @@ async function status() {
     ["VoidDB", `${runtime.voiddb.url}/health`],
     ["Backend", `http://localhost:${PORTS.backend}/health`],
     ["Frontend", `http://localhost:${PORTS.frontend}`],
-    ["BitLLM", `http://localhost:${PORTS.bitllm}/v1/models`],
   ];
 
   let failed = false;
@@ -482,7 +475,7 @@ function printBanner(runtime) {
   log(`Frontend: http://localhost:${PORTS.frontend}`);
   log(`Backend:  http://localhost:${PORTS.backend}`);
   log(`VoidDB:   ${runtime.voiddb.url} (db: ${runtime.voiddb.database})`);
-  log(`BitLLM:   http://localhost:${PORTS.bitllm}`);
+  log(`AI:       ${runtime.openrouter.model} via ${runtime.openrouter.url}`);
   log(`Logs:     ${LOGS_DIR}`);
   log("");
 }
@@ -495,12 +488,6 @@ async function start() {
 
   await syncDb(runtime);
 
-  const ownedContainers = [];
-  const bitllmWasStarted = await startBitllm();
-  if (bitllmWasStarted) {
-    ownedContainers.push("english-bitllm");
-  }
-
   const backend = spawnService("backend", "bun", ["run", "dev"], {
     cwd: BACKEND_DIR,
     env: {
@@ -511,7 +498,13 @@ async function start() {
       VOIDDB_TOKEN: runtime.voiddb.token,
       VOIDDB_USERNAME: runtime.voiddb.username,
       VOIDDB_PASSWORD: runtime.voiddb.password,
-      BITLLM_URL: `http://localhost:${PORTS.bitllm}`,
+      OPENROUTER_URL: runtime.openrouter.url,
+      OPENROUTER_API_KEY: runtime.openrouter.apiKey,
+      OPENROUTER_MODEL: runtime.openrouter.model,
+      OPENROUTER_SITE_URL: runtime.openrouter.siteUrl,
+      OPENROUTER_SITE_NAME: runtime.openrouter.siteName,
+      OPENROUTER_TEMPERATURE: runtime.openrouter.temperature,
+      OPENROUTER_MAX_TOKENS: runtime.openrouter.maxTokens,
       FRONTEND_URL: `http://localhost:${PORTS.frontend}`,
       CORS_ORIGINS: `http://localhost:${PORTS.frontend},http://127.0.0.1:${PORTS.frontend},https://english.lowkey.su`,
     },
@@ -538,7 +531,6 @@ async function start() {
 
   saveState({
     pids: [backend.pid, frontend.pid],
-    ownedContainers,
   });
 
   const cleanup = async () => {
@@ -546,10 +538,6 @@ async function start() {
       const state = readState();
       for (const pid of state?.pids || []) {
         killPid(pid);
-      }
-
-      for (const container of state?.ownedContainers || []) {
-        stopContainer(container);
       }
 
       unlinkSync(STATE_FILE);

@@ -34,7 +34,7 @@ async function seedPlans() {
     features: [
       "Unlimited flashcards",
       "AI flashcard generation",
-      "Fast BitLLM mode",
+      "OpenRouter AI generation",
       "Pronunciation analysis",
       "Bulk generation from text",
       "Priority support",
@@ -52,7 +52,7 @@ async function seedPlans() {
     features: [
       "Unlimited flashcards",
       "AI flashcard generation",
-      "Fast BitLLM mode",
+      "OpenRouter AI generation",
       "Pronunciation analysis",
       "Bulk generation from text",
       "Priority support",

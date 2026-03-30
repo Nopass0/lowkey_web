@@ -342,7 +342,6 @@ jobs:
           LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
           BACKEND_BIND_PORT: '3302'
           FRONTEND_BIND_PORT: '3303'
-          BITLLM_BIND_PORT: '8180'
           NEXT_PUBLIC_SITE_URL: https://english.lowkey.su
           NEXT_PUBLIC_API_URL: /api
           BACKEND_INTERNAL_URL: http://backend:3002
@@ -361,15 +360,13 @@ jobs:
           YOKASSA_TEST_SHOP_ID: ${{ env.YOKASSA_TEST_SHOP_ID }}
           YOKASSA_TEST_SECRET: ${{ env.YOKASSA_TEST_SECRET }}
           YOKASSA_TEST_MODE: 'true'
-          BITLLM_API_KEY: ${{ secrets.BITLLM_API_KEY }}
-          BITNET_MODEL_REPO: ${{ env.BITNET_MODEL_REPO }}
-          BITNET_MODEL_DIR_NAME: ${{ env.BITNET_MODEL_DIR_NAME }}
-          BITNET_QUANT_TYPE: ${{ env.BITNET_QUANT_TYPE }}
-          BITNET_USE_PRETUNED: ${{ env.BITNET_USE_PRETUNED }}
-          BITNET_THREADS: ${{ env.BITNET_THREADS }}
-          BITNET_CTX_SIZE: ${{ env.BITNET_CTX_SIZE }}
-          BITNET_TEMPERATURE: ${{ env.BITNET_TEMPERATURE }}
-          BITNET_N_PREDICT: ${{ env.BITNET_N_PREDICT }}
+          OPENROUTER_URL: https://openrouter.ai/api/v1
+          OPENROUTER_API_KEY: ${{ env.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ env.OPENROUTER_DEFAULT_MODEL }}
+          OPENROUTER_SITE_URL: https://english.lowkey.su
+          OPENROUTER_SITE_NAME: LowKey English
+          OPENROUTER_TEMPERATURE: '0.7'
+          OPENROUTER_MAX_TOKENS: '2048'
         run: |
           retry() {
             local max_attempts="$1"
@@ -404,7 +401,6 @@ jobs:
              LETSENCRYPT_EMAIL='${LETSENCRYPT_EMAIL}' \
              BACKEND_BIND_PORT='${BACKEND_BIND_PORT}' \
              FRONTEND_BIND_PORT='${FRONTEND_BIND_PORT}' \
-             BITLLM_BIND_PORT='${BITLLM_BIND_PORT}' \
              NEXT_PUBLIC_SITE_URL='${NEXT_PUBLIC_SITE_URL}' \
              NEXT_PUBLIC_API_URL='${NEXT_PUBLIC_API_URL}' \
              BACKEND_INTERNAL_URL='${BACKEND_INTERNAL_URL}' \
@@ -423,15 +419,13 @@ jobs:
              YOKASSA_TEST_SHOP_ID='${YOKASSA_TEST_SHOP_ID}' \
              YOKASSA_TEST_SECRET='${YOKASSA_TEST_SECRET}' \
              YOKASSA_TEST_MODE='${YOKASSA_TEST_MODE}' \
-             BITLLM_API_KEY='${BITLLM_API_KEY}' \
-             BITNET_MODEL_REPO='${BITNET_MODEL_REPO}' \
-             BITNET_MODEL_DIR_NAME='${BITNET_MODEL_DIR_NAME}' \
-             BITNET_QUANT_TYPE='${BITNET_QUANT_TYPE}' \
-             BITNET_USE_PRETUNED='${BITNET_USE_PRETUNED}' \
-             BITNET_THREADS='${BITNET_THREADS}' \
-             BITNET_CTX_SIZE='${BITNET_CTX_SIZE}' \
-             BITNET_TEMPERATURE='${BITNET_TEMPERATURE}' \
-             BITNET_N_PREDICT='${BITNET_N_PREDICT}' \
+             OPENROUTER_URL='${OPENROUTER_URL}' \
+             OPENROUTER_API_KEY='${OPENROUTER_API_KEY}' \
+             OPENROUTER_MODEL='${OPENROUTER_MODEL}' \
+             OPENROUTER_SITE_URL='${OPENROUTER_SITE_URL}' \
+             OPENROUTER_SITE_NAME='${OPENROUTER_SITE_NAME}' \
+             OPENROUTER_TEMPERATURE='${OPENROUTER_TEMPERATURE}' \
+             OPENROUTER_MAX_TOKENS='${OPENROUTER_MAX_TOKENS}' \
              ./deploy/scripts/deploy.sh"
 
       - name: Verify English public health
@@ -492,8 +486,7 @@ jobs:
              curl -sv http://127.0.0.1:3302/health || true && \
              curl -sv http://127.0.0.1:3303/ -o /tmp/english_frontend_body.txt || true && \
              tail -n 40 /tmp/english_frontend_body.txt || true && \
-             ss -lntp | grep -E ':3302|:3303|:8180' || true && \
+             ss -lntp | grep -E ':3302|:3303' || true && \
              nginx -T 2>/dev/null | sed -n '/server_name english.lowkey.su/,/}/p' || true && \
              docker logs --tail=200 english-backend || true && \
-             docker logs --tail=200 english-frontend || true && \
-             docker logs --tail=200 english-bitllm || true"
+             docker logs --tail=200 english-frontend || true"

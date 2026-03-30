@@ -102,6 +102,8 @@ export const paymentsApi = {
 // Admin
 export const adminApi = {
   getStats: () => apiClient.get("/admin/stats").then((r) => r.data),
+  getAiSettings: () => apiClient.get("/admin/ai-settings").then((r) => r.data),
+  updateAiSettings: (data: any) => apiClient.patch("/admin/ai-settings", data).then((r) => r.data),
   getUsers: (params?: any) => apiClient.get("/admin/users", { params }).then((r) => r.data),
   getUser: (id: string) => apiClient.get(`/admin/users/${id}`).then((r) => r.data),
   updateUser: (id: string, data: any) => apiClient.patch(`/admin/users/${id}`, data).then((r) => r.data),
