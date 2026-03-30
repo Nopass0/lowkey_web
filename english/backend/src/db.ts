@@ -16,11 +16,6 @@ export interface QueryOptions {
   offset?: number;
 }
 
-const client = VoidClient.fromEnv({
-  url: config.voiddb.url,
-  token: config.voiddb.token || undefined,
-});
-
 let authPromise: Promise<VoidClient> | null = null;
 
 function mapField(field: string) {
@@ -74,18 +69,43 @@ function buildQuery(opts: QueryOptions = {}) {
   return builder;
 }
 
+function createClient(token?: string) {
+  return VoidClient.fromEnv({
+    url: config.voiddb.url,
+    token: token || undefined,
+  });
+}
+
+function isAuthError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /invalid or expired token|unauthorized|forbidden|401|403/i.test(message);
+}
+
 async function getClient() {
   if (!authPromise) {
     authPromise = (async () => {
-      if (!config.voiddb.token) {
-        if (!config.voiddb.username || !config.voiddb.password) {
-          throw new Error("VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD.");
-        }
+      if (config.voiddb.token) {
+        const tokenClient = createClient(config.voiddb.token);
 
-        await client.login(config.voiddb.username, config.voiddb.password);
+        try {
+          await tokenClient.listDatabases();
+          return tokenClient;
+        } catch (error) {
+          if (!isAuthError(error) || !config.voiddb.username || !config.voiddb.password) {
+            throw error;
+          }
+
+          console.warn("[voiddb] token rejected, falling back to username/password auth");
+        }
       }
 
-      return client;
+      if (!config.voiddb.username || !config.voiddb.password) {
+        throw new Error("VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD.");
+      }
+
+      const passwordClient = createClient();
+      await passwordClient.login(config.voiddb.username, config.voiddb.password);
+      return passwordClient;
     })();
   }
 
