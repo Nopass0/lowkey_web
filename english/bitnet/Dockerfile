@@ -9,6 +9,8 @@ ARG BITNET_USE_PRETUNED=1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     BITNET_MODEL_DIR_NAME=${BITNET_MODEL_DIR_NAME} \
     BITNET_QUANT_TYPE=${BITNET_QUANT_TYPE}
 
@@ -38,7 +40,7 @@ WORKDIR /opt
 RUN git clone --depth 1 --branch ${BITNET_REF} --recursive ${BITNET_REPO} BitNet
 
 WORKDIR /opt/BitNet
-RUN python3 -m pip install --break-system-packages --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
 RUN if [ "${BITNET_USE_PRETUNED}" = "1" ]; then \
       python3 setup_env.py \
         --hf-repo "${BITNET_MODEL_REPO}" \
