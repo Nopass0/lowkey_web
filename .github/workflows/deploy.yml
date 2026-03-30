@@ -149,11 +149,32 @@ jobs:
           SSH_SERVER: ${{ secrets.SSH_SERVER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes"
-          sshpass -p "${SSH_PASSWORD}" ssh ${SSH_OPTS} "${SSH_USER}@${SSH_SERVER}" "mkdir -p '${REMOTE_BASE}'"
-          sshpass -p "${SSH_PASSWORD}" rsync -az --delete \
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            local delay=5
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              local exit_code=$?
+              if (( attempt >= max_attempts )); then
+                return "${exit_code}"
+              fi
+              echo "Attempt ${attempt}/${max_attempts} failed with exit code ${exit_code}. Retrying in ${delay}s..."
+              sleep "${delay}"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1"
+          retry 4 sshpass -p "${SSH_PASSWORD}" rsync -az --delete \
             -e "ssh ${SSH_OPTS}" \
+            --rsync-path="mkdir -p '${REMOTE_BASE}' && rsync" \
             --exclude ".git/" \
             --exclude ".github/" \
             --exclude "frontend/node_modules/" \
@@ -173,6 +194,7 @@ jobs:
           SSH_SERVER: ${{ secrets.SSH_SERVER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
           APP_ENV: ${{ env.APP_ENV }}
           DOMAIN: ${{ env.DOMAIN }}
           AI_DOMAIN: ${{ env.AI_DOMAIN }}
@@ -225,8 +247,28 @@ jobs:
           YOKASSA_TEST_SECRET: ${{ env.YOKASSA_TEST_SECRET }}
           SITE_URL: ${{ env.SITE_URL }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes"
-          sshpass -p "${SSH_PASSWORD}" ssh \
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            local delay=5
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              local exit_code=$?
+              if (( attempt >= max_attempts )); then
+                return "${exit_code}"
+              fi
+              echo "Attempt ${attempt}/${max_attempts} failed with exit code ${exit_code}. Retrying in ${delay}s..."
+              sleep "${delay}"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1"
+          retry 4 sshpass -p "${SSH_PASSWORD}" ssh \
             ${SSH_OPTS} \
             "${SSH_USER}@${SSH_SERVER}" \
             "cd '${REMOTE_BASE}' && \
@@ -291,6 +333,7 @@ jobs:
           SSH_SERVER: ${{ secrets.SSH_SERVER }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
           REMOTE_BASE: ${{ env.REMOTE_BASE }}
           APP_ENV: main
           DOMAIN: english.lowkey.su
@@ -326,8 +369,28 @@ jobs:
           BITNET_TEMPERATURE: ${{ env.BITNET_TEMPERATURE }}
           BITNET_N_PREDICT: ${{ env.BITNET_N_PREDICT }}
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes"
-          sshpass -p "${SSH_PASSWORD}" ssh \
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            local delay=5
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              local exit_code=$?
+              if (( attempt >= max_attempts )); then
+                return "${exit_code}"
+              fi
+              echo "Attempt ${attempt}/${max_attempts} failed with exit code ${exit_code}. Retrying in ${delay}s..."
+              sleep "${delay}"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1"
+          retry 4 sshpass -p "${SSH_PASSWORD}" ssh \
             ${SSH_OPTS} \
             "${SSH_USER}@${SSH_SERVER}" \
             "cd '${REMOTE_BASE}/english' && \
