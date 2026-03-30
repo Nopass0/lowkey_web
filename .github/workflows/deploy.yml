@@ -157,11 +157,10 @@ jobs:
             local attempt=1
             local delay=10
             while true; do
-              "$@"
-              local exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -200,11 +199,10 @@ jobs:
             local attempt=1
             local delay=10
             while true; do
-              "$@"
-              local exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -301,11 +299,10 @@ jobs:
             local attempt=1
             local delay=10
             while true; do
-              "$@"
-              local exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -425,11 +422,10 @@ jobs:
             local attempt=1
             local delay=10
             while true; do
-              "$@"
-              local exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -515,11 +511,10 @@ jobs:
             local attempt=1
             local delay=10
             while true; do
-              "$@"
-              local exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
