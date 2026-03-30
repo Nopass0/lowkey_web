@@ -157,10 +157,11 @@ jobs:
             local attempt=1
             local delay=5
             while true; do
-              if "$@"; then
+              "$@"
+              local exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -253,10 +254,11 @@ jobs:
             local attempt=1
             local delay=5
             while true; do
-              if "$@"; then
+              "$@"
+              local exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -375,10 +377,11 @@ jobs:
             local attempt=1
             local delay=5
             while true; do
-              if "$@"; then
+              "$@"
+              local exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -463,10 +466,11 @@ jobs:
             local attempt=1
             local delay=5
             while true; do
-              if "$@"; then
+              "$@"
+              local exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi

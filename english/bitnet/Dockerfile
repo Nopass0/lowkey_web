@@ -25,10 +25,13 @@ RUN apt-get update && \
       python3-pip \
       software-properties-common \
       wget && \
-    bash -c "$(wget -O - https://apt.llvm.org/llvm.sh) 18" && \
+    wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
+    chmod +x /tmp/llvm.sh && \
+    bash /tmp/llvm.sh 18 && \
     apt-get install -y --no-install-recommends clang-18 lld-18 && \
     ln -sf /usr/bin/clang-18 /usr/local/bin/clang && \
     ln -sf /usr/bin/clang++-18 /usr/local/bin/clang++ && \
+    rm -f /tmp/llvm.sh && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
