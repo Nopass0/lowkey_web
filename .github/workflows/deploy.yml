@@ -350,7 +350,7 @@ jobs:
           VOIDDB_DATABASE: english
           VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
           VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
-          VOIDDB_TOKEN: ${{ env.VOIDDB_TOKEN }}
+          VOIDDB_TOKEN: ''
           NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: lowkey_english_bot
           JWT_SECRET: ${{ env.JWT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}

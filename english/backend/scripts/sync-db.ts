@@ -12,12 +12,12 @@ function requireVoidDbAuth() {
   const username = process.env.VOIDDB_USERNAME || "";
   const password = process.env.VOIDDB_PASSWORD || "";
 
-  if (token) {
-    return { token };
-  }
-
   if (username && password) {
     return { username, password };
+  }
+
+  if (token) {
+    return { token };
   }
 
   throw new Error("Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD before syncing the English schema.");
@@ -31,32 +31,27 @@ function isAuthError(error: unknown) {
 async function getClient() {
   const auth = requireVoidDbAuth();
 
-  if ("token" in auth) {
-    const tokenClient = VoidClient.fromEnv({
-      url: VOIDDB_URL,
-      token: auth.token,
-    });
-
-    try {
-      await tokenClient.listDatabases();
-      return tokenClient;
-    } catch (error) {
-      const username = process.env.VOIDDB_USERNAME || "";
-      const password = process.env.VOIDDB_PASSWORD || "";
-      if (!isAuthError(error) || !username || !password) {
-        throw error;
-      }
-
-      console.warn("[sync-db] token rejected, falling back to username/password auth");
-      const passwordClient = VoidClient.fromEnv({ url: VOIDDB_URL });
-      await passwordClient.login(username, password);
-      return passwordClient;
-    }
+  if ("username" in auth) {
+    const client = VoidClient.fromEnv({ url: VOIDDB_URL });
+    await client.login(auth.username, auth.password);
+    return client;
   }
 
-  const client = VoidClient.fromEnv({ url: VOIDDB_URL });
-  await client.login(auth.username, auth.password);
-  return client;
+  const tokenClient = VoidClient.fromEnv({
+    url: VOIDDB_URL,
+    token: auth.token,
+  });
+
+  try {
+    await tokenClient.listDatabases();
+    return tokenClient;
+  } catch (error) {
+    if (!isAuthError(error)) {
+      throw error;
+    }
+
+    throw new Error("VoidDB token is invalid or expired, and username/password auth is not configured.");
+  }
 }
 
 async function main() {
