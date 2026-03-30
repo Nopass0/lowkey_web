@@ -6,7 +6,7 @@ Standalone LowKey English app for `english.lowkey.su`.
 
 - Frontend: Next.js 14
 - Backend: Bun + Elysia
-- Database: VoidDB in a dedicated container
+- Database: shared VoidDB instance at `db.lowkey.su`, using a dedicated database named `english`
 - AI: BitNet / BitLLM in a dedicated container
 
 ## Local development
@@ -32,9 +32,9 @@ Platform wrappers:
 What the script does:
 
 1. Creates `backend/.env` and `frontend/.env.local` from examples when missing.
-2. Installs backend and frontend dependencies when `node_modules` are missing.
-3. Starts VoidDB on `http://localhost:7701`.
-4. Restarts the running VoidDB container when needed and sync-checks the schema from `backend/.voiddb/schema/english.schema`.
+2. Reuses shared VoidDB credentials from `../.env.backend` when that file exists, otherwise from `english/backend/.env`.
+3. Installs backend and frontend dependencies when `node_modules` are missing.
+4. Syncs the `english` database schema against the configured VoidDB server.
 5. Downloads/builds and starts BitLLM on `http://localhost:8080` if it is not already running.
 6. Starts backend on `http://localhost:3002`.
 7. Starts frontend on `http://localhost:3003`.
@@ -59,9 +59,8 @@ Manual schema sync:
 npm run sync-db
 ```
 
-The schema file now uses the official VoidDB ORM format with `database { name = "english" }`, `model ...`, and `@@map(...)`.
-`npm run sync-db` restarts the local VoidDB container if it exists, waits for health, and verifies every mapped collection from the schema through the API.
-For a read-only check without restart, run `cd backend && bun run sync-db:verify`.
+The schema file uses the official VoidDB ORM format with `database { name = "english" }`, `model ...`, and `@@map(...)`.
+`npm run sync-db` authenticates to the configured VoidDB server, creates the `english` database if it does not exist, pushes the schema, and verifies the mapped collections.
 
 ## BitLLM
 
@@ -82,7 +81,7 @@ The production stack is defined in `docker-compose.yml`. It expects:
 
 - frontend on `127.0.0.1:${FRONTEND_BIND_PORT}`
 - backend on `127.0.0.1:${BACKEND_BIND_PORT}`
-- VoidDB on `127.0.0.1:${VOIDDB_BIND_PORT}`
+- shared VoidDB at `${VOIDDB_URL}` with database `${VOIDDB_DATABASE}`
 - BitLLM on `127.0.0.1:${BITLLM_BIND_PORT}`
 
 Example compose env file:
@@ -108,6 +107,7 @@ Required GitHub secrets:
 - `SSH_USER`
 - `SSH_PASSWORD`
 - `LETSENCRYPT_EMAIL`
+- `VOIDDB_PASSWORD` or `VOIDDB_TOKEN`
 - `JWT_SECRET`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_URL`

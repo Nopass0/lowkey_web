@@ -1,17 +1,4 @@
 services:
-  voiddb:
-    image: ghcr.io/nopass0/voiddb:latest
-    container_name: english-voiddb
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${VOIDDB_BIND_PORT:-7701}:7700"
-    environment:
-      VOIDDB_API_KEY: ${VOIDDB_API_KEY:-english-voiddb-key}
-      VOIDDB_PORT: 7700
-    volumes:
-      - ./backend/.voiddb/schema:/app/.voiddb/schema:ro
-      - ./deploy/runtime/${APP_ENV:-main}/voiddb:/app/data
-
   bitllm:
     build:
       context: ./bitnet
@@ -54,13 +41,15 @@ services:
       HOST: 0.0.0.0
       PORT: 3002
       NODE_ENV: production
-      VOIDDB_URL: http://voiddb:7700
-      VOIDDB_API_KEY: ${VOIDDB_API_KEY:-english-voiddb-key}
+      VOIDDB_URL: ${VOIDDB_URL:-https://db.lowkey.su}
+      VOIDDB_DATABASE: ${VOIDDB_DATABASE:-english}
+      VOIDDB_TOKEN: ${VOIDDB_TOKEN:-}
+      VOIDDB_USERNAME: ${VOIDDB_USERNAME:-}
+      VOIDDB_PASSWORD: ${VOIDDB_PASSWORD:-}
       BITLLM_URL: http://bitllm:8080
       FRONTEND_URL: ${NEXT_PUBLIC_SITE_URL:-https://english.lowkey.su}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://english.lowkey.su}
     depends_on:
-      - voiddb
       - bitllm
     volumes:
       - ./deploy/runtime/${APP_ENV:-main}/uploads:/app/uploads

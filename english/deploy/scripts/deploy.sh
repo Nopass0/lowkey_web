@@ -6,7 +6,6 @@ DOMAIN="${DOMAIN:?DOMAIN is required}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL is required}"
 BACKEND_BIND_PORT="${BACKEND_BIND_PORT:-3302}"
 FRONTEND_BIND_PORT="${FRONTEND_BIND_PORT:-3303}"
-VOIDDB_BIND_PORT="${VOIDDB_BIND_PORT:-7711}"
 BITLLM_BIND_PORT="${BITLLM_BIND_PORT:-8180}"
 APP_ENV="${APP_ENV:-main}"
 
@@ -14,7 +13,11 @@ NEXT_PUBLIC_SITE_URL="${NEXT_PUBLIC_SITE_URL:-https://${DOMAIN}}"
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
 BACKEND_INTERNAL_URL="${BACKEND_INTERNAL_URL:-http://backend:3002}"
 CORS_ORIGINS="${CORS_ORIGINS:-${NEXT_PUBLIC_SITE_URL}}"
-VOIDDB_API_KEY="${VOIDDB_API_KEY:-english-voiddb-key}"
+VOIDDB_URL="${VOIDDB_URL:-https://db.lowkey.su}"
+VOIDDB_DATABASE="${VOIDDB_DATABASE:-english}"
+VOIDDB_USERNAME="${VOIDDB_USERNAME:-}"
+VOIDDB_PASSWORD="${VOIDDB_PASSWORD:-}"
+VOIDDB_TOKEN="${VOIDDB_TOKEN:-}"
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME="${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME:-lowkey_english_bot}"
 
 BITNET_MODEL_REPO="${BITNET_MODEL_REPO:-1bitLLM/bitnet_b1_58-large}"
@@ -42,9 +45,12 @@ write_compose_env() {
 APP_ENV=${APP_ENV}
 FRONTEND_BIND_PORT=${FRONTEND_BIND_PORT}
 BACKEND_BIND_PORT=${BACKEND_BIND_PORT}
-VOIDDB_BIND_PORT=${VOIDDB_BIND_PORT}
 BITLLM_BIND_PORT=${BITLLM_BIND_PORT}
-VOIDDB_API_KEY=${VOIDDB_API_KEY}
+VOIDDB_URL=${VOIDDB_URL}
+VOIDDB_DATABASE=${VOIDDB_DATABASE}
+VOIDDB_USERNAME=${VOIDDB_USERNAME}
+VOIDDB_PASSWORD=${VOIDDB_PASSWORD}
+VOIDDB_TOKEN=${VOIDDB_TOKEN}
 NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
@@ -61,19 +67,32 @@ BITNET_N_PREDICT=${BITNET_N_PREDICT}
 EOF
 }
 
+has_voiddb_auth() {
+  [[ -n "${VOIDDB_TOKEN:-}" ]] || {
+    [[ -n "${VOIDDB_USERNAME:-}" ]] && [[ -n "${VOIDDB_PASSWORD:-}" ]]
+  }
+}
+
 write_backend_env() {
-  if [[ -z "${JWT_SECRET:-}" && -f "${ROOT_DIR}/backend/.env" ]]; then
+  if [[ -f "${ROOT_DIR}/backend/.env" ]] && { [[ -z "${JWT_SECRET:-}" ]] || ! has_voiddb_auth; }; then
     return
   fi
 
   : "${JWT_SECRET:?JWT_SECRET is required when backend/.env does not exist}"
+  if ! has_voiddb_auth; then
+    echo "Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD for English deploy." >&2
+    exit 1
+  fi
 
   cat > "${ROOT_DIR}/backend/.env" <<EOF
 HOST=0.0.0.0
 PORT=3002
 JWT_SECRET=${JWT_SECRET}
-VOIDDB_URL=http://voiddb:7700
-VOIDDB_API_KEY=${VOIDDB_API_KEY}
+VOIDDB_URL=${VOIDDB_URL}
+VOIDDB_DATABASE=${VOIDDB_DATABASE}
+VOIDDB_USERNAME=${VOIDDB_USERNAME}
+VOIDDB_PASSWORD=${VOIDDB_PASSWORD}
+VOIDDB_TOKEN=${VOIDDB_TOKEN}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-${NEXT_PUBLIC_SITE_URL}}
 YOKASSA_SHOP_ID=${YOKASSA_SHOP_ID:-}
@@ -91,7 +110,6 @@ EOF
 
 ensure_runtime_dirs() {
   mkdir -p "${ROOT_DIR}/deploy/runtime/${APP_ENV}/uploads"
-  mkdir -p "${ROOT_DIR}/deploy/runtime/${APP_ENV}/voiddb"
 }
 
 install_nginx_config() {
@@ -147,14 +165,10 @@ deploy_stack() {
   cd "${ROOT_DIR}"
   local compose_cmd=(docker compose --env-file .env.compose)
 
-  "${compose_cmd[@]}" up -d --build --remove-orphans voiddb bitllm
-  wait_http "http://127.0.0.1:${VOIDDB_BIND_PORT}/health" "VoidDB" 90
+  "${compose_cmd[@]}" up -d --build --remove-orphans bitllm
   wait_http "http://127.0.0.1:${BITLLM_BIND_PORT}/v1/models" "BitLLM" 450
 
-  "${compose_cmd[@]}" run --rm \
-    -e VOIDDB_URL=http://voiddb:7700 \
-    -e VOIDDB_API_KEY="${VOIDDB_API_KEY}" \
-    backend bun run sync-db
+  "${compose_cmd[@]}" run --rm backend bun run sync-db
 
   "${compose_cmd[@]}" up -d --build --remove-orphans backend frontend
   wait_http "http://127.0.0.1:${BACKEND_BIND_PORT}/health" "Backend" 90

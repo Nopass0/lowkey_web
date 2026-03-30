@@ -4,25 +4,24 @@ const { spawn, spawnSync } = require("child_process");
 const { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } = require("fs");
 const path = require("path");
 const http = require("http");
+const https = require("https");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
+const SITE_ROOT_DIR = path.resolve(ROOT_DIR, "..");
 const BACKEND_DIR = path.join(ROOT_DIR, "backend");
 const FRONTEND_DIR = path.join(ROOT_DIR, "frontend");
 const LOGS_DIR = path.join(ROOT_DIR, ".logs");
 const STATE_DIR = path.join(ROOT_DIR, ".dev");
 const STATE_FILE = path.join(STATE_DIR, "state.json");
+const SITE_BACKEND_ENV_FILE = path.join(SITE_ROOT_DIR, ".env.backend");
 
 const IS_WIN = process.platform === "win32";
 
 const PORTS = {
-  voiddb: Number.parseInt(process.env.VOIDDB_PORT || "7701", 10),
   backend: Number.parseInt(process.env.BACKEND_PORT || "3002", 10),
   frontend: Number.parseInt(process.env.FRONTEND_PORT || "3003", 10),
   bitllm: Number.parseInt(process.env.BITLLM_PORT || "8080", 10),
 };
-
-const VOIDDB_CONTAINER_NAME = process.env.VOIDDB_CONTAINER_NAME || "english-voiddb";
-const VOIDDB_API_KEY = process.env.VOIDDB_API_KEY || "english-voiddb-key";
 
 const COLORS = {
   reset: "\x1b[0m",
@@ -31,7 +30,6 @@ const COLORS = {
   yellow: "\x1b[33m",
   red: "\x1b[31m",
   blue: "\x1b[34m",
-  dim: "\x1b[2m",
 };
 const COMMAND_CACHE = new Map();
 
@@ -155,7 +153,8 @@ function ensureDir(directory) {
 
 function checkHttp(url, timeoutMs = 3000) {
   return new Promise((resolve) => {
-    const request = http.get(url, { timeout: timeoutMs }, (response) => {
+    const transport = url.startsWith("https://") ? https : http;
+    const request = transport.get(url, { timeout: timeoutMs }, (response) => {
       response.resume();
       resolve(response.statusCode && response.statusCode < 500);
     });
@@ -185,18 +184,6 @@ async function waitForHttp(url, label, timeoutSeconds = 120) {
   return false;
 }
 
-function dockerPath(filePath) {
-  const resolved = path.resolve(filePath);
-
-  if (!IS_WIN) {
-    return resolved;
-  }
-
-  return resolved
-    .replace(/\\/g, "/")
-    .replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
-}
-
 function hasTool(command) {
   return run(command, ["--version"], { capture: true, allowFail: true }).status === 0;
 }
@@ -207,17 +194,42 @@ function ensureTool(command, description) {
   }
 }
 
-function ensureDockerDaemon() {
-  const result = run("docker", ["info"], { capture: true, allowFail: true });
-  if (result.status !== 0) {
-    throw new Error("Docker daemon is not running. Start Docker Desktop (or the Docker service) and try again.");
-  }
-}
-
 function ensureEnvFile(targetPath, examplePath) {
   if (!existsSync(targetPath)) {
     copyFileSync(examplePath, targetPath);
   }
+}
+
+function parseEnvFile(filePath) {
+  if (!existsSync(filePath)) {
+    return {};
+  }
+
+  const values = {};
+  for (const rawLine of readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    let value = line.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    values[key] = value;
+  }
+
+  return values;
 }
 
 function upsertEnvValue(filePath, key, value) {
@@ -234,36 +246,76 @@ function upsertEnvValue(filePath, key, value) {
   writeFileSync(filePath, `${content}${suffix}${line}\n`);
 }
 
+function removeEnvKey(filePath, key) {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const pattern = new RegExp(`^${key}=.*$`);
+  const next = readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => !pattern.test(line))
+    .join("\n")
+    .replace(/\n+$/, "");
+
+  writeFileSync(filePath, next ? `${next}\n` : "");
+}
+
+function resolveRuntimeConfig(backendEnvPath) {
+  const siteEnv = parseEnvFile(SITE_BACKEND_ENV_FILE);
+  const backendEnv = parseEnvFile(backendEnvPath);
+
+  return {
+    voiddb: {
+      url: (process.env.VOIDDB_URL || siteEnv.VOIDDB_URL || "https://db.lowkey.su").replace(/\/$/, ""),
+      database: process.env.VOIDDB_DATABASE || siteEnv.VOIDDB_DATABASE || "english",
+      token: process.env.VOIDDB_TOKEN || siteEnv.VOIDDB_TOKEN || backendEnv.VOIDDB_TOKEN || "",
+      username: process.env.VOIDDB_USERNAME || siteEnv.VOIDDB_USERNAME || backendEnv.VOIDDB_USERNAME || "",
+      password: process.env.VOIDDB_PASSWORD || siteEnv.VOIDDB_PASSWORD || backendEnv.VOIDDB_PASSWORD || "",
+    },
+  };
+}
+
+function hasVoidDbAuth(runtime) {
+  return Boolean(runtime.voiddb.token || (runtime.voiddb.username && runtime.voiddb.password));
+}
+
 function ensureEnvFiles() {
-  const backendEnv = path.join(BACKEND_DIR, ".env");
-  const frontendEnv = path.join(FRONTEND_DIR, ".env.local");
+  const backendEnvPath = path.join(BACKEND_DIR, ".env");
+  const frontendEnvPath = path.join(FRONTEND_DIR, ".env.local");
 
-  ensureEnvFile(backendEnv, path.join(BACKEND_DIR, ".env.example"));
-  ensureEnvFile(frontendEnv, path.join(FRONTEND_DIR, ".env.local.example"));
+  ensureEnvFile(backendEnvPath, path.join(BACKEND_DIR, ".env.example"));
+  ensureEnvFile(frontendEnvPath, path.join(FRONTEND_DIR, ".env.local.example"));
 
-  upsertEnvValue(backendEnv, "HOST", "0.0.0.0");
-  upsertEnvValue(backendEnv, "PORT", String(PORTS.backend));
-  upsertEnvValue(backendEnv, "VOIDDB_URL", `http://localhost:${PORTS.voiddb}`);
-  upsertEnvValue(backendEnv, "VOIDDB_API_KEY", VOIDDB_API_KEY);
-  upsertEnvValue(backendEnv, "BITLLM_URL", `http://localhost:${PORTS.bitllm}`);
-  upsertEnvValue(backendEnv, "FRONTEND_URL", `http://localhost:${PORTS.frontend}`);
+  const runtime = resolveRuntimeConfig(backendEnvPath);
+
+  upsertEnvValue(backendEnvPath, "HOST", "0.0.0.0");
+  upsertEnvValue(backendEnvPath, "PORT", String(PORTS.backend));
+  upsertEnvValue(backendEnvPath, "VOIDDB_URL", runtime.voiddb.url);
+  upsertEnvValue(backendEnvPath, "VOIDDB_DATABASE", runtime.voiddb.database);
+  upsertEnvValue(backendEnvPath, "VOIDDB_USERNAME", runtime.voiddb.username);
+  upsertEnvValue(backendEnvPath, "VOIDDB_PASSWORD", runtime.voiddb.password);
+  upsertEnvValue(backendEnvPath, "VOIDDB_TOKEN", runtime.voiddb.token);
+  upsertEnvValue(backendEnvPath, "BITLLM_URL", `http://localhost:${PORTS.bitllm}`);
+  upsertEnvValue(backendEnvPath, "FRONTEND_URL", `http://localhost:${PORTS.frontend}`);
   upsertEnvValue(
-    backendEnv,
+    backendEnvPath,
     "CORS_ORIGINS",
     `http://localhost:${PORTS.frontend},http://127.0.0.1:${PORTS.frontend},https://english.lowkey.su`
   );
+  removeEnvKey(backendEnvPath, "VOIDDB_API_KEY");
 
-  upsertEnvValue(frontendEnv, "NEXT_PUBLIC_API_URL", "/api");
-  upsertEnvValue(frontendEnv, "BACKEND_URL", `http://localhost:${PORTS.backend}`);
-  upsertEnvValue(frontendEnv, "NEXT_PUBLIC_SITE_URL", `http://localhost:${PORTS.frontend}`);
+  upsertEnvValue(frontendEnvPath, "NEXT_PUBLIC_API_URL", "/api");
+  upsertEnvValue(frontendEnvPath, "BACKEND_URL", `http://localhost:${PORTS.backend}`);
+  upsertEnvValue(frontendEnvPath, "NEXT_PUBLIC_SITE_URL", `http://localhost:${PORTS.frontend}`);
+
+  return runtime;
 }
 
 function ensureDependencies() {
   ensureTool("node", "Node.js");
   ensureTool("npm", "npm");
   ensureTool("bun", "Bun");
-  ensureTool("docker", "Docker");
-  ensureDockerDaemon();
 
   if (!existsSync(path.join(BACKEND_DIR, "node_modules"))) {
     logInfo("installing backend dependencies with bun install");
@@ -276,62 +328,23 @@ function ensureDependencies() {
   }
 }
 
-async function startVoidDb() {
-  const healthUrl = `http://localhost:${PORTS.voiddb}/health`;
-  if (await checkHttp(healthUrl)) {
-    logOk(`VoidDB already available at ${healthUrl}`);
-    return false;
+async function syncDb(runtime) {
+  if (!hasVoidDbAuth(runtime)) {
+    throw new Error(
+      "VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD in english/backend/.env, site/.env.backend, or the shell environment."
+    );
   }
 
-  ensureDir(path.join(BACKEND_DIR, ".voiddb", "schema"));
-  ensureDir(path.join(BACKEND_DIR, ".voiddb", "data"));
+  logInfo(`syncing schema to ${runtime.voiddb.url} (database ${runtime.voiddb.database})`);
 
-  const schemaMount = dockerPath(path.join(BACKEND_DIR, ".voiddb", "schema"));
-  const dataMount = dockerPath(path.join(BACKEND_DIR, ".voiddb", "data"));
-
-  run("docker", ["rm", "-f", VOIDDB_CONTAINER_NAME], { allowFail: true, capture: true });
-  run("docker", [
-    "run",
-    "-d",
-    "--name",
-    VOIDDB_CONTAINER_NAME,
-    "--restart",
-    "unless-stopped",
-    "-p",
-    `${PORTS.voiddb}:7700`,
-    "-v",
-    `${schemaMount}:/app/.voiddb/schema`,
-    "-v",
-    `${dataMount}:/app/data`,
-    "-e",
-    `VOIDDB_API_KEY=${VOIDDB_API_KEY}`,
-    "-e",
-    "VOIDDB_PORT=7700",
-    "ghcr.io/nopass0/voiddb:latest",
-  ]);
-
-  const ready = await waitForHttp(healthUrl, "VoidDB", 90);
-  if (!ready) {
-    throw new Error("VoidDB did not start successfully.");
-  }
-
-  return true;
-}
-
-async function syncDb(shouldRestartContainer) {
-  logInfo("verifying database schema");
-
-  const args = ["run", "scripts/sync-db.ts"];
-  if (shouldRestartContainer) {
-    args.push("--", "--restart-container");
-  }
-
-  run("bun", args, {
+  run("bun", ["run", "scripts/sync-db.ts"], {
     cwd: BACKEND_DIR,
     env: {
-      VOIDDB_URL: `http://localhost:${PORTS.voiddb}`,
-      VOIDDB_API_KEY: VOIDDB_API_KEY,
-      VOIDDB_CONTAINER_NAME: VOIDDB_CONTAINER_NAME,
+      VOIDDB_URL: runtime.voiddb.url,
+      VOIDDB_DATABASE: runtime.voiddb.database,
+      VOIDDB_TOKEN: runtime.voiddb.token,
+      VOIDDB_USERNAME: runtime.voiddb.username,
+      VOIDDB_PASSWORD: runtime.voiddb.password,
     },
   });
 }
@@ -443,8 +456,9 @@ async function stopAll() {
 }
 
 async function status() {
+  const runtime = resolveRuntimeConfig(path.join(BACKEND_DIR, ".env"));
   const checks = [
-    ["VoidDB", `http://localhost:${PORTS.voiddb}/health`],
+    ["VoidDB", `${runtime.voiddb.url}/health`],
     ["Backend", `http://localhost:${PORTS.backend}/health`],
     ["Frontend", `http://localhost:${PORTS.frontend}`],
     ["BitLLM", `http://localhost:${PORTS.bitllm}/v1/models`],
@@ -462,12 +476,12 @@ async function status() {
   process.exit(failed ? 1 : 0);
 }
 
-function printBanner() {
+function printBanner(runtime) {
   log("");
   log("LowKey English dev stack");
   log(`Frontend: http://localhost:${PORTS.frontend}`);
   log(`Backend:  http://localhost:${PORTS.backend}`);
-  log(`VoidDB:   http://localhost:${PORTS.voiddb}`);
+  log(`VoidDB:   ${runtime.voiddb.url} (db: ${runtime.voiddb.database})`);
   log(`BitLLM:   http://localhost:${PORTS.bitllm}`);
   log(`Logs:     ${LOGS_DIR}`);
   log("");
@@ -476,18 +490,12 @@ function printBanner() {
 async function start() {
   ensureDir(LOGS_DIR);
   ensureDir(STATE_DIR);
-  ensureEnvFiles();
+  const runtime = ensureEnvFiles();
   ensureDependencies();
 
+  await syncDb(runtime);
+
   const ownedContainers = [];
-
-  const voidDbWasStarted = await startVoidDb();
-  if (voidDbWasStarted) {
-    ownedContainers.push(VOIDDB_CONTAINER_NAME);
-  }
-
-  await syncDb(!voidDbWasStarted);
-
   const bitllmWasStarted = await startBitllm();
   if (bitllmWasStarted) {
     ownedContainers.push("english-bitllm");
@@ -498,8 +506,11 @@ async function start() {
     env: {
       HOST: "0.0.0.0",
       PORT: String(PORTS.backend),
-      VOIDDB_URL: `http://localhost:${PORTS.voiddb}`,
-      VOIDDB_API_KEY: VOIDDB_API_KEY,
+      VOIDDB_URL: runtime.voiddb.url,
+      VOIDDB_DATABASE: runtime.voiddb.database,
+      VOIDDB_TOKEN: runtime.voiddb.token,
+      VOIDDB_USERNAME: runtime.voiddb.username,
+      VOIDDB_PASSWORD: runtime.voiddb.password,
       BITLLM_URL: `http://localhost:${PORTS.bitllm}`,
       FRONTEND_URL: `http://localhost:${PORTS.frontend}`,
       CORS_ORIGINS: `http://localhost:${PORTS.frontend},http://127.0.0.1:${PORTS.frontend},https://english.lowkey.su`,
@@ -555,7 +566,7 @@ async function start() {
     process.exit(0);
   });
 
-  printBanner();
+  printBanner(runtime);
   await new Promise(() => {});
 }
 

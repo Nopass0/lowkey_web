@@ -28,8 +28,11 @@ export const config = {
   port: parseInt(process.env.PORT || "3002"),
   jwtSecret: process.env.JWT_SECRET || "english-learning-secret-key-change-in-prod",
   voiddb: {
-    url: process.env.VOIDDB_URL || "http://localhost:7701",
-    apiKey: process.env.VOIDDB_API_KEY || "english-voiddb-key",
+    url: process.env.VOIDDB_URL || "https://db.lowkey.su",
+    database: process.env.VOIDDB_DATABASE || "english",
+    token: process.env.VOIDDB_TOKEN || "",
+    username: process.env.VOIDDB_USERNAME || "",
+    password: process.env.VOIDDB_PASSWORD || "",
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || "",

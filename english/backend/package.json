@@ -5,23 +5,24 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir dist",
-    "sync-db": "bun run scripts/sync-db.ts --restart-container",
+    "sync-db": "bun run scripts/sync-db.ts",
     "sync-db:verify": "bun run scripts/sync-db.ts",
-    "sync-db:watch": "bun run --watch scripts/sync-db.ts --restart-container"
+    "sync-db:watch": "bun run --watch scripts/sync-db.ts"
   },
   "dependencies": {
-    "elysia": "^1.1.0",
+    "@elysiajs/bearer": "^1.1.0",
     "@elysiajs/cors": "^1.1.0",
     "@elysiajs/jwt": "^1.1.0",
-    "@elysiajs/bearer": "^1.1.0",
     "@elysiajs/static": "^1.1.0",
-    "grammy": "^1.31.0",
-    "node-cron": "^3.0.3",
-    "bcryptjs": "^2.4.3",
-    "nanoid": "^5.0.7",
+    "@voiddb/orm": "^1.2.3",
     "axios": "^1.14.0",
+    "bcryptjs": "^2.4.3",
+    "elysia": "^1.1.0",
     "form-data": "^4.0.1",
-    "multer": "^1.4.5-lts.1"
+    "grammy": "^1.31.0",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.0.7",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "bun-types": "latest",

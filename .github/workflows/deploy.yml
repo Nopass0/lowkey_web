@@ -297,13 +297,16 @@ jobs:
           LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
           BACKEND_BIND_PORT: '3302'
           FRONTEND_BIND_PORT: '3303'
-          VOIDDB_BIND_PORT: '7711'
           BITLLM_BIND_PORT: '8180'
           NEXT_PUBLIC_SITE_URL: https://english.lowkey.su
           NEXT_PUBLIC_API_URL: /api
           BACKEND_INTERNAL_URL: http://backend:3002
           CORS_ORIGINS: https://english.lowkey.su
-          VOIDDB_API_KEY: english-voiddb-key
+          VOIDDB_URL: ${{ env.VOIDDB_URL }}
+          VOIDDB_DATABASE: english
+          VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
+          VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
+          VOIDDB_TOKEN: ${{ env.VOIDDB_TOKEN }}
           NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: lowkey_english_bot
           JWT_SECRET: ${{ env.JWT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
@@ -335,13 +338,16 @@ jobs:
              LETSENCRYPT_EMAIL='${LETSENCRYPT_EMAIL}' \
              BACKEND_BIND_PORT='${BACKEND_BIND_PORT}' \
              FRONTEND_BIND_PORT='${FRONTEND_BIND_PORT}' \
-             VOIDDB_BIND_PORT='${VOIDDB_BIND_PORT}' \
              BITLLM_BIND_PORT='${BITLLM_BIND_PORT}' \
              NEXT_PUBLIC_SITE_URL='${NEXT_PUBLIC_SITE_URL}' \
              NEXT_PUBLIC_API_URL='${NEXT_PUBLIC_API_URL}' \
              BACKEND_INTERNAL_URL='${BACKEND_INTERNAL_URL}' \
              CORS_ORIGINS='${CORS_ORIGINS}' \
-             VOIDDB_API_KEY='${VOIDDB_API_KEY}' \
+             VOIDDB_URL='${VOIDDB_URL}' \
+             VOIDDB_DATABASE='${VOIDDB_DATABASE}' \
+             VOIDDB_USERNAME='${VOIDDB_USERNAME}' \
+             VOIDDB_PASSWORD='${VOIDDB_PASSWORD}' \
+             VOIDDB_TOKEN='${VOIDDB_TOKEN}' \
              NEXT_PUBLIC_TELEGRAM_BOT_USERNAME='${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}' \
              JWT_SECRET='${JWT_SECRET}' \
              TELEGRAM_BOT_TOKEN='${TELEGRAM_BOT_TOKEN}' \
