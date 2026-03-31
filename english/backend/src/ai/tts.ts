@@ -28,6 +28,10 @@ const DEFAULT_TTS_MODELS = [
   "ResembleAI/chatterbox",
 ];
 
+function buildPlaybackUrl(cacheId: string) {
+  return `/api/tts/cache/${encodeURIComponent(cacheId)}/audio`;
+}
+
 function buildModelCandidates(...models: Array<string | undefined>) {
   return [
     ...new Set(
@@ -355,6 +359,37 @@ async function requestTtsAudio(
 
 export const ttsRoutes = new Elysia({ prefix: "/tts" })
   .use(jwt({ name: "jwt", secret: config.jwtSecret }))
+  .get(
+    "/cache/:id/audio",
+    async ({ params, set }) => {
+      const cached = await db.findOne("EnglishSoundCache", [
+        db.filter.eq("id", params.id),
+      ]);
+
+      if (!cached?.audio?._blob_bucket || !cached?.audio?._blob_key) {
+        set.status = 404;
+        return { error: "Not found" };
+      }
+
+      const file = await db.downloadBlob(cached.audio);
+      const headers: Record<string, string> = {
+        "Content-Type": file.contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+      };
+
+      if (file.contentLength) {
+        headers["Content-Length"] = String(file.contentLength);
+      }
+      if (file.lastModified) {
+        headers["Last-Modified"] = file.lastModified;
+      }
+      if (file.etag) {
+        headers.ETag = file.etag;
+      }
+
+      return new Response(file.buffer, { headers });
+    },
+  )
 
   .post(
     "/",
@@ -392,10 +427,12 @@ export const ttsRoutes = new Elysia({ prefix: "/tts" })
       if (
         cached &&
         cached.audioUrl &&
+        cached.id &&
         (!cached.model || modelCandidates.includes(cached.model))
       ) {
         return {
-          audioUrl: cached.audioUrl,
+          audioUrl: buildPlaybackUrl(cached.id),
+          storageUrl: cached.audioUrl,
           cached: true,
           model: cached.model || requestedModel,
         };
@@ -467,7 +504,12 @@ export const ttsRoutes = new Elysia({ prefix: "/tts" })
           model: result.model,
         });
 
-        return { audioUrl, cached: false, model: result.model };
+        return {
+          audioUrl: buildPlaybackUrl(cacheItem.id),
+          storageUrl: audioUrl,
+          cached: false,
+          model: result.model,
+        };
       } catch (error) {
         console.error("[hf-tts] exception:", error);
         set.status = 500;

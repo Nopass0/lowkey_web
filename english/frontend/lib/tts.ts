@@ -57,7 +57,11 @@ async function speakWithBrowser(text: string, lang = "en-US") {
 
 export async function speakEnglishText(
   text: string,
-  options: { model?: string; onStateChange?: (value: boolean) => void } = {},
+  options: {
+    model?: string;
+    onStateChange?: (value: boolean) => void;
+    allowBrowserFallback?: boolean;
+  } = {},
 ) {
   const normalizedText = text.trim();
   if (!normalizedText) {
@@ -71,9 +75,19 @@ export async function speakEnglishText(
       await playAudioUrl(response.audioUrl);
       return;
     }
-    await speakWithBrowser(normalizedText);
-  } catch {
-    await speakWithBrowser(normalizedText);
+    if (options.allowBrowserFallback) {
+      await speakWithBrowser(normalizedText);
+      return;
+    }
+    console.error("[tts] server tts did not return playable audio");
+    return;
+  } catch (error) {
+    console.error("[tts] playback failed:", error);
+    if (options.allowBrowserFallback) {
+      await speakWithBrowser(normalizedText);
+      return;
+    }
+    return;
   } finally {
     options.onStateChange?.(false);
   }

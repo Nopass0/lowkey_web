@@ -242,6 +242,7 @@ async function rawVoidRequest<T = any>(configOverrides: {
   data?: any;
   headers?: Record<string, string>;
   timeout?: number;
+  responseType?: "arraybuffer" | "json" | "text";
 }) {
   const send = async (token: string) => {
     let lastError: unknown;
@@ -254,6 +255,7 @@ async function rawVoidRequest<T = any>(configOverrides: {
           url: configOverrides.url,
           data: configOverrides.data,
           timeout: configOverrides.timeout || 60_000,
+          responseType: configOverrides.responseType,
           headers: {
             Authorization: `Bearer ${token}`,
             ...configOverrides.headers,
@@ -705,6 +707,23 @@ export const db = {
   async blobUrl(collection: string, ref: any) {
     const handle = await getCollection(collection);
     return handle.blobUrl(ref);
+  },
+
+  async downloadBlob(ref: BlobRef) {
+    const response = await rawVoidRequest<ArrayBuffer>({
+      method: "GET",
+      url: `${baseVoidUrl()}/s3/${encodeURIComponent(ref._blob_bucket)}/${encodePath(ref._blob_key)}`,
+      responseType: "arraybuffer",
+      timeout: 120_000,
+    });
+
+    return {
+      buffer: new Uint8Array(response.data),
+      contentType: response.headers["content-type"] || "application/octet-stream",
+      contentLength: Number(response.headers["content-length"] || 0) || undefined,
+      lastModified: response.headers["last-modified"],
+      etag: response.headers.etag,
+    };
   },
 
   async upsert(collection: string, filters: FilterOp[], data: Record<string, any>) {
