@@ -5,15 +5,25 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { useAuthStore } from "@/store/auth";
+import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, token, fetchMe } = useAuthStore();
+  const { user, token, fetchMe, hasHydrated } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!token) { router.push("/login"); return; }
     if (!user) fetchMe();
-  }, [token]);
+  }, [fetchMe, hasHydrated, router, token, user]);
+
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!token) return null;
 

@@ -27,8 +27,10 @@ interface AuthStore {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  hasHydrated: boolean;
   setUser: (user: User) => void;
   setToken: (token: string) => void;
+  setHasHydrated: (value: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
@@ -42,8 +44,10 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       token: null,
       isLoading: false,
+      hasHydrated: false,
 
       setUser: (user) => set({ user }),
+      setHasHydrated: (value) => set({ hasHydrated: value }),
       setToken: (token) => {
         set({ token });
         if (typeof window !== "undefined") localStorage.setItem("english_token", token);
@@ -103,6 +107,16 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: "english-auth",
       partialize: (state) => ({ token: state.token, user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        if (typeof window !== "undefined" && !state?.token) {
+          const fallbackToken = localStorage.getItem("english_token");
+          if (fallbackToken) {
+            state?.setToken(fallbackToken);
+          }
+        }
+
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
