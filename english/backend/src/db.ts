@@ -1,3 +1,4 @@
+import axios from "axios";
 import { VoidClient, query } from "@voiddb/orm";
 import { nanoid } from "nanoid";
 import { config } from "./config";
@@ -18,16 +19,29 @@ export interface QueryOptions {
 }
 
 type QueryInput = QueryOptions | FilterOp[];
+type BlobRef = {
+  _blob_bucket: string;
+  _blob_key: string;
+  _blob_url: string;
+};
 
 let authPromise: Promise<VoidClient> | null = null;
+let rawTokenPromise: Promise<string> | null = null;
+const ensuredBuckets = new Set<string>();
 
 function mapField(field: string) {
   return field === "id" ? "_id" : field;
 }
 
+function stripUndefined(data: Record<string, any>) {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
+}
+
 function normalizeInput(data: Record<string, any>, ensureId = false) {
   const { id, _id, ...rest } = data;
-  const next = { ...rest } as Record<string, any>;
+  const next = stripUndefined({ ...rest }) as Record<string, any>;
   const resolvedId = _id || id || (ensureId ? nanoid() : undefined);
 
   if (resolvedId) {
@@ -90,6 +104,18 @@ function createClient(token?: string) {
   });
 }
 
+function baseVoidUrl() {
+  return config.voiddb.url.replace(/\/$/, "");
+}
+
+function encodePath(path: string) {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
 function isAuthError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
   return /invalid or expired token|unauthorized|forbidden|401|403/i.test(message);
@@ -98,6 +124,127 @@ function isAuthError(error: unknown) {
 function isMissingBucketError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
   return /bucket|blob|not found|404/i.test(message);
+}
+
+function isMissingOrUnsupportedFileRoute(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /404|not found|files\//i.test(message);
+}
+
+function matchesPatch(actual: any, expected: any): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+
+  if (expected === null || typeof expected !== "object") {
+    return actual === expected;
+  }
+
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) && JSON.stringify(actual) === JSON.stringify(expected);
+  }
+
+  if (!actual || typeof actual !== "object") {
+    return false;
+  }
+
+  return Object.entries(expected).every(([key, value]) => matchesPatch(actual[key], value));
+}
+
+function preservesDocumentState(
+  before: Record<string, any>,
+  after: Record<string, any>,
+  patch: Record<string, any>,
+) {
+  if (!matchesPatch(after, patch)) {
+    return false;
+  }
+
+  return Object.entries(before).every(([key, value]) => {
+    if (key === "updatedAt" || Object.prototype.hasOwnProperty.call(patch, key)) {
+      return true;
+    }
+
+    return matchesPatch(after[key], value);
+  });
+}
+
+async function getAccessToken(forceRefresh = false): Promise<string> {
+  if (config.voiddb.token && !forceRefresh) {
+    return config.voiddb.token;
+  }
+
+  if (!forceRefresh && rawTokenPromise) {
+    return rawTokenPromise;
+  }
+
+  rawTokenPromise = (async () => {
+    if (config.voiddb.token && !forceRefresh) {
+      return config.voiddb.token;
+    }
+
+    if (!config.voiddb.username || !config.voiddb.password) {
+      throw new Error(
+        "VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD.",
+      );
+    }
+
+    const response = await axios.post(
+      `${baseVoidUrl()}/v1/auth/login`,
+      {
+        username: config.voiddb.username,
+        password: config.voiddb.password,
+      },
+      {
+        adapter: "http",
+        timeout: 30_000,
+      },
+    );
+
+    const token =
+      response.data?.access_token ||
+      response.data?.token ||
+      response.data?.accessToken;
+
+    if (!token) {
+      throw new Error("VoidDB login succeeded but did not return an access token.");
+    }
+
+    return token as string;
+  })();
+
+  return rawTokenPromise;
+}
+
+async function rawVoidRequest<T = any>(configOverrides: {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  data?: any;
+  headers?: Record<string, string>;
+  timeout?: number;
+}) {
+  const send = async (token: string) =>
+    axios.request<T>({
+      adapter: "http",
+      method: configOverrides.method,
+      url: configOverrides.url,
+      data: configOverrides.data,
+      timeout: configOverrides.timeout || 60_000,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...configOverrides.headers,
+      },
+    });
+
+  try {
+    return await send(await getAccessToken());
+  } catch (error) {
+    if (isAuthError(error) && config.voiddb.username && config.voiddb.password) {
+      rawTokenPromise = null;
+      return send(await getAccessToken(true));
+    }
+    throw error;
+  }
 }
 
 async function getClient() {
@@ -144,11 +291,211 @@ async function getCollection(name: string) {
   return (await getClient()).db(config.voiddb.database).collection<VoidRow>(name);
 }
 
+async function findRowById(collection: string, id: string) {
+  const handle = await getCollection(collection);
+  const rows = await handle.find(query().where("_id", "eq", id).limit(1));
+  return rows.first() ?? null;
+}
+
+async function ensureBucket(bucket: string) {
+  if (ensuredBuckets.has(bucket)) {
+    return;
+  }
+
+  try {
+    await rawVoidRequest({
+      method: "PUT",
+      url: `${baseVoidUrl()}/s3/${encodeURIComponent(bucket)}`,
+      timeout: 30_000,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    if (!/409|already exists/i.test(message)) {
+      throw error;
+    }
+  }
+
+  ensuredBuckets.add(bucket);
+}
+
+function buildBlobRef(bucket: string, key: string): BlobRef {
+  return {
+    _blob_bucket: bucket,
+    _blob_key: key,
+    _blob_url: `${baseVoidUrl()}/s3/${encodeURIComponent(bucket)}/${encodePath(key)}`,
+  };
+}
+
+function buildBlobKey(
+  collection: string,
+  id: string,
+  field: string,
+  options?: { filename?: string; key?: string },
+) {
+  if (options?.key) {
+    return options.key;
+  }
+
+  const safeFilename = (options?.filename || `${field}-${nanoid(8)}`)
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || `${field}-${nanoid(8)}`;
+
+  return `${collection}/${id}/${field}/${Date.now()}-${safeFilename}`;
+}
+
+async function persistDocumentPatch(
+  collection: string,
+  id: string,
+  patch: Record<string, any>,
+  options: { verify?: boolean } = {},
+) {
+  const verify = options.verify ?? true;
+  const handle = await getCollection(collection);
+  const normalizedPatch = normalizeInput(patch);
+  const current = await findRowById(collection, id);
+
+  if (!current) {
+    throw new Error(`Document not found: ${collection}/${id}`);
+  }
+
+  if (!verify) {
+    const replacement = normalizeInput({
+      ...current,
+      ...normalizedPatch,
+      id,
+      _id: id,
+      ...(Object.prototype.hasOwnProperty.call(current, "updatedAt") &&
+      !Object.prototype.hasOwnProperty.call(normalizedPatch, "updatedAt")
+        ? { updatedAt: new Date().toISOString() }
+        : {}),
+    });
+
+    await handle.delete(id);
+    try {
+      await handle.insert(replacement);
+    } catch (error) {
+      try {
+        await handle.insert(normalizeInput({ ...current, id, _id: id }));
+      } catch {
+        // Best-effort restore only.
+      }
+      throw error;
+    }
+
+    const reloaded = await findRowById(collection, id);
+    if (reloaded) {
+      return reloaded;
+    }
+
+    throw new Error(`VoidDB rewrite fallback did not persist for ${collection}/${id}`);
+  }
+
+  try {
+    await handle.patch(id, normalizedPatch);
+    const reloaded = await findRowById(collection, id);
+    if (reloaded && preservesDocumentState(current, reloaded, normalizedPatch)) {
+      return reloaded;
+    }
+    console.warn(
+      "[voiddb] patch did not persist for %s/%s, falling back to rewrite",
+      collection,
+      id,
+    );
+  } catch (error) {
+    console.warn(
+      "[voiddb] patch failed for %s/%s, falling back to rewrite: %s",
+      collection,
+      id,
+      error instanceof Error ? error.message : String(error || ""),
+    );
+  }
+
+  const replacement = normalizeInput({
+    ...current,
+    ...normalizedPatch,
+    id,
+    _id: id,
+    ...(Object.prototype.hasOwnProperty.call(current, "updatedAt") &&
+    !Object.prototype.hasOwnProperty.call(normalizedPatch, "updatedAt")
+      ? { updatedAt: new Date().toISOString() }
+      : {}),
+  });
+
+  await handle.delete(id);
+  try {
+    await handle.insert(replacement);
+  } catch (error) {
+    try {
+      await handle.insert(normalizeInput({ ...current, id, _id: id }));
+    } catch {
+      // Best-effort restore only.
+    }
+    throw error;
+  }
+
+  const reloaded = await findRowById(collection, id);
+  if (reloaded && preservesDocumentState(current, reloaded, normalizedPatch)) {
+    return reloaded;
+  }
+
+  throw new Error(`VoidDB rewrite fallback did not persist for ${collection}/${id}`);
+}
+
+async function uploadViaS3(
+  collection: string,
+  id: string,
+  field: string,
+  source: ArrayBuffer | Uint8Array,
+  options?: { filename?: string; contentType?: string; bucket?: string; key?: string },
+) {
+  const bucket = options?.bucket || `${config.voiddb.database}-blobs`;
+  const key = buildBlobKey(collection, id, field, options);
+  const ref = buildBlobRef(bucket, key);
+  const body = source instanceof Uint8Array ? source : new Uint8Array(source);
+
+  await ensureBucket(bucket);
+  await rawVoidRequest({
+    method: "PUT",
+    url: `${baseVoidUrl()}/s3/${encodeURIComponent(bucket)}/${encodePath(key)}`,
+    data: body,
+    headers: {
+      "Content-Type": options?.contentType || "application/octet-stream",
+    },
+    timeout: 120_000,
+  });
+
+  await persistDocumentPatch(collection, id, { [field]: ref }, { verify: false });
+  return ref;
+}
+
+async function deleteViaS3(collection: string, id: string, field: string) {
+  const current = await findRowById(collection, id);
+  const ref = current?.[field] as BlobRef | undefined;
+
+  if (ref?._blob_bucket && ref?._blob_key) {
+    try {
+      await rawVoidRequest({
+        method: "DELETE",
+        url: `${baseVoidUrl()}/s3/${encodeURIComponent(ref._blob_bucket)}/${encodePath(ref._blob_key)}`,
+        timeout: 60_000,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (!/404|not found/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  await persistDocumentPatch(collection, id, { [field]: null }, { verify: false });
+}
+
 export const db = {
   async create(collection: string, data: Record<string, any>) {
     const handle = await getCollection(collection);
     const id = await handle.insert(normalizeInput(data, true));
-    return normalizeRow(await handle.findById(id));
+    return normalizeRow(await findRowById(collection, id));
   },
 
   async findOne(collection: string, filters: FilterOp[]) {
@@ -169,9 +516,7 @@ export const db = {
   },
 
   async update(collection: string, id: string, data: Record<string, any>) {
-    const handle = await getCollection(collection);
-    const row = await handle.patch(id, normalizeInput(data));
-    return normalizeRow(row);
+    return normalizeRow(await persistDocumentPatch(collection, id, data));
   },
 
   async delete(collection: string, id: string) {
@@ -184,7 +529,7 @@ export const db = {
     id: string,
     field: string,
     source: ArrayBuffer | Uint8Array,
-    options?: { filename?: string; contentType?: string; bucket?: string },
+    options?: { filename?: string; contentType?: string; bucket?: string; key?: string },
   ) {
     const handle = await getCollection(collection);
     try {
@@ -198,7 +543,28 @@ export const db = {
           field,
         );
         const { bucket: _bucket, ...fallbackOptions } = options;
-        return handle.uploadFile(id, field, source, fallbackOptions);
+        try {
+          return await handle.uploadFile(id, field, source, fallbackOptions);
+        } catch (fallbackError) {
+          if (isMissingOrUnsupportedFileRoute(fallbackError)) {
+            console.warn(
+              "[voiddb] upload endpoint unsupported for %s.%s, falling back to raw /s3 upload",
+              collection,
+              field,
+            );
+            return uploadViaS3(collection, id, field, source, options);
+          }
+          throw fallbackError;
+        }
+      }
+
+      if (isMissingOrUnsupportedFileRoute(error)) {
+        console.warn(
+          "[voiddb] upload endpoint unsupported for %s.%s, falling back to raw /s3 upload",
+          collection,
+          field,
+        );
+        return uploadViaS3(collection, id, field, source, options);
       }
       throw error;
     }
@@ -206,7 +572,20 @@ export const db = {
 
   async deleteFile(collection: string, id: string, field: string) {
     const handle = await getCollection(collection);
-    await handle.deleteFile(id, field);
+    try {
+      await handle.deleteFile(id, field);
+    } catch (error) {
+      if (isMissingOrUnsupportedFileRoute(error)) {
+        console.warn(
+          "[voiddb] delete endpoint unsupported for %s.%s, falling back to raw /s3 delete",
+          collection,
+          field,
+        );
+        await deleteViaS3(collection, id, field);
+        return;
+      }
+      throw error;
+    }
   },
 
   async blobUrl(collection: string, ref: any) {
