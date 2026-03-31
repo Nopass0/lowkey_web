@@ -1,6 +1,6 @@
 import Elysia, { t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
-import { InferenceClient } from "@huggingface/inference";
+import axios from "axios";
 import { config } from "../config";
 import { db } from "../db";
 import { getHfSettings } from "./hf-settings";
@@ -13,6 +13,14 @@ type SuccessfulTtsResult = Extract<TtsResult, { ok: true }> & { model: string };
 type FailedTtsResult = Extract<TtsResult, { ok: false }> & {
   model?: string;
   attempts?: Array<{ model: string; status: number; message: string }>;
+};
+
+type ProviderMappingEntry = {
+  provider: string;
+  providerId: string;
+  hfModelId?: string;
+  task?: string;
+  status?: string;
 };
 
 const DEFAULT_TTS_MODELS = [
@@ -48,41 +56,233 @@ function readProviderErrorBody(body: unknown) {
   return "";
 }
 
-async function requestTtsFromModel(
-  client: InferenceClient,
-  model: string,
-  text: string,
-): Promise<TtsResult> {
+function normalizeProviderMappings(input: unknown): ProviderMappingEntry[] {
+  if (!input) {
+    return [];
+  }
+
+  if (Array.isArray(input)) {
+    return input as ProviderMappingEntry[];
+  }
+
+  if (typeof input === "object") {
+    return Object.entries(input as Record<string, any>).map(([provider, value]) => ({
+      provider,
+      providerId: value?.providerId || value?.modelId || value?.id || "",
+      hfModelId: value?.hfModelId,
+      task: value?.task,
+      status: value?.status,
+    })).filter((entry) => entry.providerId);
+  }
+
+  return [];
+}
+
+async function fetchInferenceProviderMappings(model: string, token: string) {
   try {
-    const audio = await client.textToSpeech({
-      model,
-      provider: "auto",
-      inputs: text,
+    const response = await axios.get(`https://huggingface.co/api/models/${model}`, {
+      adapter: "http",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      params: {
+        "expand[]": "inferenceProviderMapping",
+      },
+      timeout: 30_000,
+    });
+
+    return normalizeProviderMappings(response.data?.inferenceProviderMapping);
+  } catch (error) {
+    console.error(`[hf-tts] failed to fetch provider mapping for ${model}:`, error);
+    return [];
+  }
+}
+
+function selectTtsMappings(mappings: ProviderMappingEntry[]) {
+  const supportedProviders = ["fal-ai", "replicate"];
+
+  return mappings
+    .filter((entry) => entry.task === "text-to-speech" && entry.status !== "staging")
+    .sort((left, right) => {
+      const leftIndex = supportedProviders.indexOf(left.provider);
+      const rightIndex = supportedProviders.indexOf(right.provider);
+      return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+    });
+}
+
+async function downloadAudio(url: string): Promise<TtsResult> {
+  try {
+    const response = await axios.get<ArrayBuffer>(url, {
+      adapter: "http",
+      responseType: "arraybuffer",
+      timeout: 120_000,
     });
 
     return {
       ok: true,
-      buffer: new Uint8Array(await audio.arrayBuffer()),
-      contentType: audio.type || "audio/wav",
+      buffer: new Uint8Array(response.data),
+      contentType: response.headers["content-type"] || "audio/wav",
     };
   } catch (error) {
-    const providerError = error as Error & {
-      response?: { status?: number; body?: unknown };
-    };
-    const status = providerError.response?.status || 500;
-    const responseBody = readProviderErrorBody(providerError.response?.body);
-    const message = [providerError.message, responseBody]
+    const axiosError = error as any;
+    const message = [
+      axiosError?.message,
+      readProviderErrorBody(axiosError?.response?.data),
+    ]
       .filter(Boolean)
       .join(" ")
       .trim();
 
     return {
       ok: false,
-      status,
-      message: message || "unknown TTS error",
-      loading: status === 503 && /loading/i.test(message),
+      status: axiosError?.response?.status || 500,
+      message: message || "failed to download audio",
     };
   }
+}
+
+async function requestFalAiTts(
+  mapping: ProviderMappingEntry,
+  token: string,
+  text: string,
+): Promise<TtsResult> {
+  try {
+    const response = await axios.post(
+      `https://router.huggingface.co/fal-ai/${mapping.providerId}`,
+      { text },
+      {
+        adapter: "http",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 120_000,
+      },
+    );
+
+    if (typeof response.data?.audio?.url !== "string") {
+      return {
+        ok: false,
+        status: response.status,
+        message: "Malformed fal-ai TTS response",
+      };
+    }
+
+    return await downloadAudio(response.data.audio.url);
+  } catch (error) {
+    const axiosError = error as any;
+    const message = [
+      axiosError?.message,
+      readProviderErrorBody(axiosError?.response?.data),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return {
+      ok: false,
+      status: axiosError?.response?.status || 500,
+      message: message || "fal-ai TTS request failed",
+      loading:
+        (axiosError?.response?.status || 500) === 503 &&
+        /loading/i.test(message),
+    };
+  }
+}
+
+async function requestReplicateTts(
+  mapping: ProviderMappingEntry,
+  token: string,
+  text: string,
+): Promise<TtsResult> {
+  try {
+    const usesVersionRoute = mapping.providerId.includes(":");
+    const url = usesVersionRoute
+      ? "https://router.huggingface.co/replicate/v1/predictions"
+      : `https://router.huggingface.co/replicate/v1/models/${mapping.providerId}/predictions`;
+
+    const response = await axios.post(
+      url,
+      {
+        input: {
+          text,
+        },
+        version: usesVersionRoute ? mapping.providerId.split(":")[1] : undefined,
+      },
+      {
+        adapter: "http",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Prefer: "wait",
+          "Content-Type": "application/json",
+        },
+        timeout: 120_000,
+      },
+    );
+
+    const output = response.data?.output;
+    if (typeof output === "string") {
+      return await downloadAudio(output);
+    }
+
+    if (Array.isArray(output) && typeof output[0] === "string") {
+      return await downloadAudio(output[0]);
+    }
+
+    const status = String(response.data?.status || "");
+    if (status && ["starting", "processing"].includes(status)) {
+      return {
+        ok: false,
+        status: 503,
+        message: `Replicate model is ${status}`,
+        loading: true,
+      };
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      message: "Malformed replicate TTS response",
+    };
+  } catch (error) {
+    const axiosError = error as any;
+    const message = [
+      axiosError?.message,
+      readProviderErrorBody(axiosError?.response?.data),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return {
+      ok: false,
+      status: axiosError?.response?.status || 500,
+      message: message || "replicate TTS request failed",
+      loading:
+        (axiosError?.response?.status || 500) === 503 &&
+        /loading|starting|processing/i.test(message),
+    };
+  }
+}
+
+async function requestTtsFromMapping(
+  mapping: ProviderMappingEntry,
+  token: string,
+  text: string,
+) {
+  if (mapping.provider === "fal-ai") {
+    return requestFalAiTts(mapping, token, text);
+  }
+
+  if (mapping.provider === "replicate") {
+    return requestReplicateTts(mapping, token, text);
+  }
+
+  return {
+    ok: false,
+    status: 501,
+    message: `Unsupported TTS provider: ${mapping.provider}`,
+  } satisfies TtsResult;
 }
 
 async function requestTtsAudio(
@@ -90,26 +290,47 @@ async function requestTtsAudio(
   token: string,
   text: string,
 ): Promise<SuccessfulTtsResult | FailedTtsResult> {
-  const client = new InferenceClient(token);
-
   let lastError: FailedTtsResult | null = null;
   let loadingSeen = false;
   const attempts: Array<{ model: string; status: number; message: string }> = [];
 
   for (const model of models) {
-    const result = await requestTtsFromModel(client, model, text);
-    if (result.ok) {
-      return { ...result, model };
+    const mappings = selectTtsMappings(await fetchInferenceProviderMappings(model, token));
+    if (mappings.length === 0) {
+      attempts.push({
+        model,
+        status: 404,
+        message: "No supported text-to-speech inference provider mapping found",
+      });
+      lastError = {
+        ok: false,
+        status: 404,
+        message: "No supported text-to-speech inference provider mapping found",
+        model,
+        attempts: [...attempts],
+      };
+      continue;
     }
 
-    attempts.push({
-      model,
-      status: result.status,
-      message: result.message,
-    });
-    lastError = { ...result, model, attempts: [...attempts] };
-    if (result.loading) {
-      loadingSeen = true;
+    for (const mapping of mappings) {
+      const result = await requestTtsFromMapping(mapping, token, text);
+      if (result.ok) {
+        return { ...result, model };
+      }
+
+      attempts.push({
+        model: `${model}@${mapping.provider}`,
+        status: result.status,
+        message: result.message,
+      });
+      lastError = {
+        ...result,
+        model,
+        attempts: [...attempts],
+      };
+      if (result.loading) {
+        loadingSeen = true;
+      }
     }
   }
 
@@ -117,22 +338,19 @@ async function requestTtsAudio(
     return {
       ok: false,
       status: 503,
-      message:
-        "All configured TTS models are currently loading on HuggingFace.",
+      message: "All configured TTS models are currently loading on HuggingFace.",
       loading: true,
       model: lastError?.model,
       attempts,
     };
   }
 
-  return (
-    lastError || {
-      ok: false,
-      status: 500,
-      message: "Unknown TTS error",
-      attempts,
-    }
-  );
+  return lastError || {
+    ok: false,
+    status: 500,
+    message: "Unknown TTS error",
+    attempts,
+  };
 }
 
 export const ttsRoutes = new Elysia({ prefix: "/tts" })
