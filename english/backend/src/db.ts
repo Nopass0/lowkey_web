@@ -28,6 +28,7 @@ type BlobRef = {
 let authPromise: Promise<VoidClient> | null = null;
 let rawTokenPromise: Promise<string> | null = null;
 const ensuredBuckets = new Set<string>();
+const unsupportedFileRoutes = new Set<string>();
 
 function mapField(field: string) {
   return field === "id" ? "_id" : field;
@@ -116,14 +117,33 @@ function encodePath(path: string) {
     .join("/");
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function collectionUrl(collection: string) {
+  return `${baseVoidUrl()}/v1/databases/${encodeURIComponent(config.voiddb.database)}/${encodeURIComponent(collection)}`;
+}
+
 function isAuthError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
   return /invalid or expired token|unauthorized|forbidden|401|403/i.test(message);
 }
 
+function isRetryableHttpError(error: unknown) {
+  const status = (error as any)?.response?.status;
+  const code = (error as any)?.code;
+  const message = error instanceof Error ? error.message : String(error || "");
+  return (
+    [429, 500, 502, 503, 504].includes(status) ||
+    ["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN"].includes(code) ||
+    /timeout|socket hang up|bad gateway/i.test(message)
+  );
+}
+
 function isMissingBucketError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
-  return /bucket|blob|not found|404/i.test(message);
+  return /bucket/i.test(message) && !isMissingOrUnsupportedFileRoute(error);
 }
 
 function isMissingOrUnsupportedFileRoute(error: unknown) {
@@ -223,18 +243,33 @@ async function rawVoidRequest<T = any>(configOverrides: {
   headers?: Record<string, string>;
   timeout?: number;
 }) {
-  const send = async (token: string) =>
-    axios.request<T>({
-      adapter: "http",
-      method: configOverrides.method,
-      url: configOverrides.url,
-      data: configOverrides.data,
-      timeout: configOverrides.timeout || 60_000,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...configOverrides.headers,
-      },
-    });
+  const send = async (token: string) => {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await axios.request<T>({
+          adapter: "http",
+          method: configOverrides.method,
+          url: configOverrides.url,
+          data: configOverrides.data,
+          timeout: configOverrides.timeout || 60_000,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...configOverrides.headers,
+          },
+        });
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableHttpError(error) || attempt === 2) {
+          throw error;
+        }
+        await sleep(300 * (attempt + 1));
+      }
+    }
+
+    throw lastError;
+  };
 
   try {
     return await send(await getAccessToken());
@@ -291,10 +326,36 @@ async function getCollection(name: string) {
   return (await getClient()).db(config.voiddb.database).collection<VoidRow>(name);
 }
 
+function buildQuerySpec(input: QueryInput = {}) {
+  const builder = buildQuery(input) as any;
+  return typeof builder?.toSpec === "function" ? builder.toSpec() : builder;
+}
+
+async function rawQuery(collection: string, input: QueryInput = {}) {
+  const response = await rawVoidRequest<{
+    results?: VoidRow[];
+    count?: number;
+  }>({
+    method: "POST",
+    url: `${collectionUrl(collection)}/query`,
+    data: buildQuerySpec(input),
+    timeout: 60_000,
+  });
+
+  return {
+    results: response.data?.results || [],
+    count: typeof response.data?.count === "number"
+      ? response.data.count
+      : (response.data?.results || []).length,
+  };
+}
+
 async function findRowById(collection: string, id: string) {
-  const handle = await getCollection(collection);
-  const rows = await handle.find(query().where("_id", "eq", id).limit(1));
-  return rows.first() ?? null;
+  const rows = await rawQuery(collection, {
+    filters: [{ field: "_id", op: "eq", value: id }],
+    limit: 1,
+  });
+  return rows.results[0] ?? null;
 }
 
 async function ensureBucket(bucket: string) {
@@ -351,7 +412,6 @@ async function persistDocumentPatch(
   options: { verify?: boolean } = {},
 ) {
   const verify = options.verify ?? true;
-  const handle = await getCollection(collection);
   const normalizedPatch = normalizeInput(patch);
   const current = await findRowById(collection, id);
 
@@ -371,12 +431,26 @@ async function persistDocumentPatch(
         : {}),
     });
 
-    await handle.delete(id);
+    await rawVoidRequest({
+      method: "DELETE",
+      url: `${collectionUrl(collection)}/${encodeURIComponent(id)}`,
+      timeout: 60_000,
+    });
     try {
-      await handle.insert(replacement);
+      await rawVoidRequest({
+        method: "POST",
+        url: collectionUrl(collection),
+        data: replacement,
+        timeout: 60_000,
+      });
     } catch (error) {
       try {
-        await handle.insert(normalizeInput({ ...current, id, _id: id }));
+        await rawVoidRequest({
+          method: "POST",
+          url: collectionUrl(collection),
+          data: normalizeInput({ ...current, id, _id: id }),
+          timeout: 60_000,
+        });
       } catch {
         // Best-effort restore only.
       }
@@ -392,7 +466,12 @@ async function persistDocumentPatch(
   }
 
   try {
-    await handle.patch(id, normalizedPatch);
+    await rawVoidRequest({
+      method: "PATCH",
+      url: `${collectionUrl(collection)}/${encodeURIComponent(id)}`,
+      data: normalizedPatch,
+      timeout: 60_000,
+    });
     const reloaded = await findRowById(collection, id);
     if (reloaded && preservesDocumentState(current, reloaded, normalizedPatch)) {
       return reloaded;
@@ -422,12 +501,26 @@ async function persistDocumentPatch(
       : {}),
   });
 
-  await handle.delete(id);
+  await rawVoidRequest({
+    method: "DELETE",
+    url: `${collectionUrl(collection)}/${encodeURIComponent(id)}`,
+    timeout: 60_000,
+  });
   try {
-    await handle.insert(replacement);
+    await rawVoidRequest({
+      method: "POST",
+      url: collectionUrl(collection),
+      data: replacement,
+      timeout: 60_000,
+    });
   } catch (error) {
     try {
-      await handle.insert(normalizeInput({ ...current, id, _id: id }));
+      await rawVoidRequest({
+        method: "POST",
+        url: collectionUrl(collection),
+        data: normalizeInput({ ...current, id, _id: id }),
+        timeout: 60_000,
+      });
     } catch {
       // Best-effort restore only.
     }
@@ -493,26 +586,30 @@ async function deleteViaS3(collection: string, id: string, field: string) {
 
 export const db = {
   async create(collection: string, data: Record<string, any>) {
-    const handle = await getCollection(collection);
-    const id = await handle.insert(normalizeInput(data, true));
+    const payload = normalizeInput(data, true);
+    const response = await rawVoidRequest<{ _id?: string }>({
+      method: "POST",
+      url: collectionUrl(collection),
+      data: payload,
+      timeout: 60_000,
+    });
+    const id = response.data?._id || payload._id;
     return normalizeRow(await findRowById(collection, id));
   },
 
   async findOne(collection: string, filters: FilterOp[]) {
-    const handle = await getCollection(collection);
-    const rows = await handle.find(buildQuery({ filters, limit: 1 }));
-    return normalizeRow(rows.first());
+    const rows = await rawQuery(collection, { filters, limit: 1 });
+    return normalizeRow(rows.results[0] || null);
   },
 
   async findMany(collection: string, opts: QueryInput = {}) {
-    const handle = await getCollection(collection);
-    const rows = await handle.find(buildQuery(opts));
-    return rows.toArray().map((row) => normalizeRow(row));
+    const rows = await rawQuery(collection, opts);
+    return rows.results.map((row) => normalizeRow(row));
   },
 
   async count(collection: string, filters: FilterOp[] = []) {
-    const handle = await getCollection(collection);
-    return handle.count(buildQuery({ filters }));
+    const result = await rawQuery(collection, { filters, limit: 0 });
+    return result.count;
   },
 
   async update(collection: string, id: string, data: Record<string, any>) {
@@ -520,8 +617,11 @@ export const db = {
   },
 
   async delete(collection: string, id: string) {
-    const handle = await getCollection(collection);
-    await handle.delete(id);
+    await rawVoidRequest({
+      method: "DELETE",
+      url: `${collectionUrl(collection)}/${encodeURIComponent(id)}`,
+      timeout: 60_000,
+    });
   },
 
   async uploadFile(
@@ -531,10 +631,25 @@ export const db = {
     source: ArrayBuffer | Uint8Array,
     options?: { filename?: string; contentType?: string; bucket?: string; key?: string },
   ) {
+    const unsupportedKey = `${collection}.${field}`;
+    if (unsupportedFileRoutes.has(unsupportedKey)) {
+      return uploadViaS3(collection, id, field, source, options);
+    }
+
     const handle = await getCollection(collection);
     try {
       return await handle.uploadFile(id, field, source, options);
     } catch (error) {
+      if (isMissingOrUnsupportedFileRoute(error)) {
+        unsupportedFileRoutes.add(unsupportedKey);
+        console.warn(
+          "[voiddb] upload endpoint unsupported for %s.%s, falling back to raw /s3 upload",
+          collection,
+          field,
+        );
+        return uploadViaS3(collection, id, field, source, options);
+      }
+
       if (options?.bucket && isMissingBucketError(error)) {
         console.warn(
           "[voiddb] upload failed for bucket %s, retrying with default bucket for %s.%s",
@@ -547,6 +662,7 @@ export const db = {
           return await handle.uploadFile(id, field, source, fallbackOptions);
         } catch (fallbackError) {
           if (isMissingOrUnsupportedFileRoute(fallbackError)) {
+            unsupportedFileRoutes.add(unsupportedKey);
             console.warn(
               "[voiddb] upload endpoint unsupported for %s.%s, falling back to raw /s3 upload",
               collection,
@@ -557,25 +673,23 @@ export const db = {
           throw fallbackError;
         }
       }
-
-      if (isMissingOrUnsupportedFileRoute(error)) {
-        console.warn(
-          "[voiddb] upload endpoint unsupported for %s.%s, falling back to raw /s3 upload",
-          collection,
-          field,
-        );
-        return uploadViaS3(collection, id, field, source, options);
-      }
       throw error;
     }
   },
 
   async deleteFile(collection: string, id: string, field: string) {
+    const unsupportedKey = `${collection}.${field}`;
+    if (unsupportedFileRoutes.has(unsupportedKey)) {
+      await deleteViaS3(collection, id, field);
+      return;
+    }
+
     const handle = await getCollection(collection);
     try {
       await handle.deleteFile(id, field);
     } catch (error) {
       if (isMissingOrUnsupportedFileRoute(error)) {
+        unsupportedFileRoutes.add(unsupportedKey);
         console.warn(
           "[voiddb] delete endpoint unsupported for %s.%s, falling back to raw /s3 delete",
           collection,
