@@ -213,6 +213,94 @@ database {
     @@map("EnglishDailyReminders")
   }
 
+  model EnglishGrammarTopics {
+    id String @id @map("_id")
+    title String
+    slug String @unique
+    description String?
+    level String @default("beginner")
+    category String @default("general")
+    content String
+    examples Json[]
+    rules Json[]
+    orderIndex Int @default(0)
+    isPublished Boolean @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishGrammarTopics")
+  }
+
+  model EnglishGrammarTests {
+    id String @id @map("_id")
+    topicId String
+    question String
+    questionType String @default("multiple_choice")
+    options Json[]
+    correctAnswer String
+    explanation String?
+    difficulty Int @default(1)
+    createdAt DateTime @default(now())
+    @@map("EnglishGrammarTests")
+  }
+
+  model EnglishGrammarTestResults {
+    id String @id @map("_id")
+    userId String
+    topicId String
+    score Int @default(0)
+    totalQuestions Int @default(0)
+    answers Json[]
+    xpEarned Int @default(0)
+    completedAt DateTime @default(now())
+    @@map("EnglishGrammarTestResults")
+  }
+
+  model EnglishQuests {
+    id String @id @map("_id")
+    title String
+    description String
+    scenario String
+    difficulty String @default("easy")
+    topics Json[]
+    objectives Json[]
+    hints Json[]
+    xpReward Int @default(100)
+    aiGenerated Boolean @default(true)
+    createdAt DateTime @default(now())
+    @@map("EnglishQuests")
+  }
+
+  model EnglishQuestAttempts {
+    id String @id @map("_id")
+    userId String
+    questId String
+    userResponse String
+    aiScore Int?
+    aiFeedback String?
+    aiDetails Json?
+    status String @default("in_progress")
+    xpEarned Int @default(0)
+    startedAt DateTime @default(now())
+    completedAt DateTime?
+    @@map("EnglishQuestAttempts")
+  }
+
+  model EnglishDictionaryCache {
+    id String @id @map("_id")
+    word String @unique
+    pronunciation String?
+    phonetic String?
+    definitions Json[]
+    examples Json[]
+    synonyms Json[]
+    antonyms Json[]
+    audioUrl String?
+    origin String?
+    partOfSpeech String?
+    cachedAt DateTime @default(now())
+    @@map("EnglishDictionaryCache")
+  }
+
   model EnglishSiteSettings {
     id String @id @map("_id")
     key String @unique

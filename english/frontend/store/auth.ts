@@ -85,8 +85,13 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const user = await authApi.me();
           set({ user });
-        } catch {
-          get().logout();
+        } catch (e: any) {
+          // Only logout on 401 (invalid/expired token), not on network errors
+          const status = e?.response?.status;
+          if (status === 401 || status === 403) {
+            get().logout();
+          }
+          // else: keep session alive (network/server error, try again later)
         }
       },
 

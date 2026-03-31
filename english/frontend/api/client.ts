@@ -49,6 +49,11 @@ export const cardsApi = {
   createCard: (data: any) => apiClient.post("/cards", data).then((r) => r.data),
   updateCard: (id: string, data: any) => apiClient.patch(`/cards/${id}`, data).then((r) => r.data),
   deleteCard: (id: string) => apiClient.delete(`/cards/${id}`).then((r) => r.data),
+  uploadImage: (id: string, file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return apiClient.post(`/cards/${id}/upload-image`, fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
+  generateByTopic: (data: any) => apiClient.post("/cards/generate-by-topic", data).then((r) => r.data),
   review: (data: { cardId: string; quality: number; sessionId?: string }) =>
     apiClient.post("/cards/review", data).then((r) => r.data),
   createSession: (data: any) => apiClient.post("/cards/sessions", data).then((r) => r.data),
@@ -97,6 +102,34 @@ export const paymentsApi = {
   subscribe: (planId: string) => apiClient.post("/payments/subscribe", { planId }).then((r) => r.data),
   getHistory: () => apiClient.get("/payments/history").then((r) => r.data),
   getSubscription: () => apiClient.get("/payments/subscription").then((r) => r.data),
+};
+
+// Grammar
+export const grammarApi = {
+  getTopics: () => apiClient.get("/grammar/topics").then((r) => r.data),
+  getTopic: (slug: string) => apiClient.get(`/grammar/topics/${slug}`).then((r) => r.data),
+  generateTests: (id: string) => apiClient.post(`/grammar/topics/${id}/generate-tests`).then((r) => r.data),
+  submitTest: (id: string, answers: any) => apiClient.post(`/grammar/topics/${id}/submit`, { answers }).then((r) => r.data),
+  getProgress: () => apiClient.get("/grammar/progress").then((r) => r.data),
+  explain: (data: { text: string; question?: string }) => apiClient.post("/grammar/explain", data).then((r) => r.data),
+};
+
+// Quests
+export const questsApi = {
+  getAll: () => apiClient.get("/quests").then((r) => r.data),
+  generate: (data?: { difficulty?: string; customTopics?: string[] }) => apiClient.post("/quests/generate", data || {}).then((r) => r.data),
+  start: (id: string) => apiClient.post(`/quests/${id}/start`).then((r) => r.data),
+  submit: (id: string, data: { attemptId: string; userResponse: string }) => apiClient.post(`/quests/${id}/submit`, data).then((r) => r.data),
+  getHistory: () => apiClient.get("/quests/history").then((r) => r.data),
+  getLeaderboard: () => apiClient.get("/quests/leaderboard").then((r) => r.data),
+};
+
+// Dictionary
+export const dictionaryApi = {
+  lookup: (word: string) => apiClient.get(`/dictionary/lookup/${encodeURIComponent(word)}`).then((r) => r.data),
+  search: (q: string) => apiClient.get("/dictionary/search", { params: { q } }).then((r) => r.data),
+  wordOfDay: () => apiClient.get("/dictionary/word-of-day").then((r) => r.data),
+  saveCard: (data: { word: string; deckId?: string }) => apiClient.post("/dictionary/save-card", data).then((r) => r.data),
 };
 
 // Admin

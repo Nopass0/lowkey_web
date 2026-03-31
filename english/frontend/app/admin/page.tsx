@@ -147,27 +147,32 @@ export default function AdminPage() {
   ] : [];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-5 page-enter">
       <div className="flex items-center gap-3">
-        <Shield size={24} className="text-purple-400" />
-        <h1 className="text-2xl font-bold">Admin Panel</h1>
+        <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
+          <Shield size={18} className="text-violet-500" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold">Администрирование</h1>
+          <p className="text-xs text-muted-foreground">Управление платформой LowKey English</p>
+        </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-1 bg-accent/50 p-1 rounded-xl w-fit flex-wrap">
         {[
-          { id: "overview", label: "Overview" },
-          { id: "users", label: `Users (${users.length})` },
-          { id: "plans", label: "Plans" },
-          { id: "ai", label: "AI / OpenRouter" },
-          { id: "broadcast", label: "Broadcast" },
+          { id: "overview", label: "Обзор" },
+          { id: "users", label: `Пользователи (${users.length})` },
+          { id: "plans", label: "Планы" },
+          { id: "ai", label: "AI настройки" },
+          { id: "broadcast", label: "Рассылка" },
         ].map((item) => (
           <button
             key={item.id}
             onClick={() => setTab(item.id as TabId)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
               tab === item.id
-                ? "bg-gradient-to-r from-red-500 to-blue-500 text-white"
-                : "bg-accent text-muted-foreground hover:text-foreground"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {item.label}
@@ -176,57 +181,87 @@ export default function AdminPage() {
       </div>
 
       {tab === "overview" && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {statCards.map((item) => (
-            <motion.div
-              key={item.label}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="glass-card rounded-2xl p-5 flex items-center gap-4"
-            >
-              <div className={`p-3 rounded-xl bg-current/10 ${item.color}`}>
-                <item.icon size={22} className={item.color} />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {statCards.map((item, i) => (
+              <motion.div
+                key={item.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="glass-card rounded-2xl p-4 flex items-center gap-3"
+              >
+                <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center flex-shrink-0">
+                  <item.icon size={18} className={item.color} />
+                </div>
+                <div>
+                  <div className={`text-xl font-bold ${item.color}`}>{item.value}</div>
+                  <div className="text-xs text-muted-foreground">{item.label}</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {stats?.recentActivity && (
+            <div className="glass-card rounded-2xl p-4">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Активность за 7 дней</div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <div className="text-lg font-bold text-blue-500">{stats.recentActivity?.newUsers || 0}</div>
+                  <div className="text-xs text-muted-foreground">Новых пользователей</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-emerald-500">{stats.recentActivity?.sessionsCompleted || 0}</div>
+                  <div className="text-xs text-muted-foreground">Сессий обучения</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-violet-500">{stats.recentActivity?.cardsReviewed || 0}</div>
+                  <div className="text-xs text-muted-foreground">Карточек повторено</div>
+                </div>
               </div>
-              <div>
-                <div className={`text-2xl font-bold ${item.color}`}>{item.value}</div>
-                <div className="text-xs text-muted-foreground">{item.label}</div>
-              </div>
-            </motion.div>
-          ))}
+            </div>
+          )}
         </div>
       )}
 
       {tab === "users" && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <Input
-            placeholder="Search by name or email..."
+            placeholder="Поиск по имени или email..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            className="h-9"
           />
           <div className="space-y-2">
             {filteredUsers.map((entry) => (
               <div key={entry.id} className="glass-card rounded-xl p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-400 to-blue-400 flex items-center justify-center text-white font-bold flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-violet-400 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
                   {entry.name?.charAt(0) || "?"}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium">{entry.name}</div>
-                  <div className="text-sm text-muted-foreground truncate">{entry.email}</div>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    <span>{entry.xp || 0} XP</span>
-                    <span>{entry.studyStreak || 0} day streak</span>
-                    <span>Joined {formatDate(entry.createdAt)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{entry.name}</span>
+                    {entry.isPremium && <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/15 text-amber-500 rounded-full font-semibold border border-amber-500/20">PRO</span>}
+                    {entry.role === "admin" && <span className="text-[9px] px-1.5 py-0.5 bg-violet-500/15 text-violet-500 rounded-full font-semibold border border-violet-500/20">Admin</span>}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">{entry.email}</div>
+                  <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+                    <span>⭐ {entry.xp || 0} XP</span>
+                    <span>🔥 {entry.studyStreak || 0} дней</span>
+                    <span>{formatDate(entry.createdAt)}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {entry.isPremium ? (
-                    <Badge variant="premium">PRO</Badge>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => handleGivePremium(entry.id, 30)} className="text-xs">
-                      + 30 days PRO
+                <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
+                  {!entry.isPremium && (
+                    <Button variant="outline" size="sm" onClick={() => handleGivePremium(entry.id, 30)} className="text-[11px] h-7 px-2.5">
+                      + 30 дней PRO
                     </Button>
                   )}
-                  {entry.role === "admin" && <Badge variant="secondary">Admin</Badge>}
+                  {entry.isPremium && (
+                    <Button variant="outline" size="sm" onClick={() => handleGivePremium(entry.id, 365)} className="text-[11px] h-7 px-2.5">
+                      + 1 год PRO
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

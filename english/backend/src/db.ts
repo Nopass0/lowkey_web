@@ -87,28 +87,37 @@ function isAuthError(error: unknown) {
 async function getClient() {
   if (!authPromise) {
     authPromise = (async () => {
-      if (config.voiddb.username && config.voiddb.password) {
-        const passwordClient = createClient();
-        await passwordClient.login(config.voiddb.username, config.voiddb.password);
-        return passwordClient;
-      }
+      if (config.voiddb.token) {
+        const tokenClient = createClient(config.voiddb.token);
 
-      if (!config.voiddb.token) {
-        throw new Error("VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD.");
-      }
-
-      const tokenClient = createClient(config.voiddb.token);
-
-      try {
-        await tokenClient.listDatabases();
-        return tokenClient;
-      } catch (error) {
-        if (!isAuthError(error)) {
-          throw error;
+        try {
+          await tokenClient.listDatabases();
+          return tokenClient;
+        } catch (error) {
+          if (
+            !isAuthError(error) ||
+            !config.voiddb.username ||
+            !config.voiddb.password
+          ) {
+            if (isAuthError(error)) {
+              throw new Error(
+                "VoidDB token is invalid or expired, and username/password auth is not configured.",
+              );
+            }
+            throw error;
+          }
         }
-
-        throw new Error("VoidDB token is invalid or expired, and username/password auth is not configured.");
       }
+
+      if (!config.voiddb.username || !config.voiddb.password) {
+        throw new Error(
+          "VoidDB auth is missing. Set VOIDDB_TOKEN or VOIDDB_USERNAME/VOIDDB_PASSWORD.",
+        );
+      }
+
+      const passwordClient = createClient();
+      await passwordClient.login(config.voiddb.username, config.voiddb.password);
+      return passwordClient;
     })();
   }
 

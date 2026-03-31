@@ -12,6 +12,9 @@ import { gamesRoutes } from "./games/routes";
 import { paymentsRoutes } from "./payments/routes";
 import { adminRoutes } from "./admin/routes";
 import { progressRoutes } from "./progress/routes";
+import { grammarRoutes } from "./grammar/routes";
+import { questsRoutes } from "./quests/routes";
+import { dictionaryRoutes } from "./dictionary/routes";
 import { initBot, sendDailyReminders, getBot } from "./telegram/bot";
 import { db } from "./db";
 
@@ -99,6 +102,9 @@ const app = new Elysia()
   .use(paymentsRoutes)
   .use(adminRoutes)
   .use(progressRoutes)
+  .use(grammarRoutes)
+  .use(questsRoutes)
+  .use(dictionaryRoutes)
   .onError(({ error, set }) => {
     console.error("[error]", error);
     const message = error instanceof Error ? error.message : "Internal server error";

@@ -289,4 +289,129 @@ export const cardsRoutes = new Elysia({ prefix: "/cards" })
       limit: 20,
     });
     return sessions;
+  })
+
+  // === IMAGE UPLOAD ===
+  .post("/:id/upload-image", async ({ headers, params, body, jwt, set }) => {
+    const user = await getUser(headers, jwt, set);
+    const card = await db.findOne("EnglishCards", [
+      db.filter.eq("id", params.id),
+      db.filter.eq("userId", user.id),
+    ]);
+    if (!card) { set.status = 404; return { error: "Not found" }; }
+
+    const { file } = body as { file: File };
+    if (!file) { set.status = 400; return { error: "No file provided" }; }
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const allowed = ["jpg", "jpeg", "png", "webp", "gif"];
+    if (!allowed.includes(ext)) { set.status = 400; return { error: "Invalid file type" }; }
+
+    const fileName = `card_${params.id}_${Date.now()}.${ext}`;
+    const filePath = `${config.uploadsDir}/cards/${fileName}`;
+
+    const { mkdir, writeFile } = await import("fs/promises");
+    await mkdir(`${config.uploadsDir}/cards`, { recursive: true });
+    const buffer = await file.arrayBuffer();
+    await writeFile(filePath, Buffer.from(buffer));
+
+    const imageUrl = `/uploads/cards/${fileName}`;
+    await db.update("EnglishCards", params.id, { imageUrl });
+    return { imageUrl };
+  }, {
+    body: t.Object({ file: t.File() }),
+  })
+
+  // AI bulk generate by topic
+  .post("/generate-by-topic", async ({ headers, body, jwt, set }) => {
+    const user = await getUser(headers, jwt, set);
+    const { topic, count = 10, level = "intermediate", deckId } = body as any;
+
+    const { getAiSettings } = await import("../ai/settings");
+    const settings = await getAiSettings();
+
+    if (!settings.apiKey || !settings.model) {
+      set.status = 503;
+      return { error: "AI not configured" };
+    }
+
+    const systemPrompt = `You are an English teacher creating high-quality flashcards for Russian learners. Return ONLY valid JSON array.`;
+    const prompt = `Create ${count} English vocabulary flashcards on the topic: "${topic}".
+Level: ${level}.
+
+Return JSON array:
+[
+  {
+    "front": "English word or phrase",
+    "back": "Перевод на русском",
+    "pronunciation": "/IPA/",
+    "examples": ["English example 1.", "English example 2."],
+    "tags": ["topic", "partOfSpeech"]
+  }
+]
+Make cards varied - include nouns, verbs, phrases, idioms related to the topic. Ensure IPA pronunciation is correct.`;
+
+    let cards: any[] = [];
+    try {
+      const res = await fetch(`${settings.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${settings.apiKey}`,
+          "HTTP-Referer": settings.siteUrl,
+          "X-Title": settings.siteName,
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 3000,
+          temperature: 0.7,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        const match = text.match(/\[[\s\S]*\]/);
+        if (match) cards = JSON.parse(match[0]);
+      }
+    } catch {}
+
+    const created = [];
+    for (const c of cards.slice(0, count)) {
+      const card = await db.create("EnglishCards", {
+        userId: user.id,
+        deckId: deckId || null,
+        front: c.front,
+        back: c.back,
+        pronunciation: c.pronunciation || "",
+        examples: c.examples || [],
+        tags: c.tags || [topic],
+        aiGenerated: true,
+        easeFactor: 2.5,
+        interval: 1,
+        repetitions: 0,
+        reviewCount: 0,
+        correctCount: 0,
+        status: "new",
+        nextReview: new Date().toISOString(),
+      });
+      created.push(card);
+    }
+
+    if (deckId && created.length > 0) {
+      const deck = await db.findOne("EnglishDecks", [db.filter.eq("id", deckId)]);
+      if (deck) await db.update("EnglishDecks", deckId, { cardCount: (deck.cardCount || 0) + created.length });
+    }
+
+    return { cards: created, count: created.length };
+  }, {
+    body: t.Object({
+      topic: t.String(),
+      count: t.Optional(t.Number()),
+      level: t.Optional(t.String()),
+      deckId: t.Optional(t.String()),
+    }),
   });
