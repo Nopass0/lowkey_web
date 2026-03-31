@@ -66,7 +66,7 @@ export const config = {
   },
   huggingface: {
     apiToken: process.env.HF_API_TOKEN || "",
-    ttsModel: process.env.HF_TTS_MODEL || "facebook/mms-tts-eng",
+    ttsModel: process.env.HF_TTS_MODEL || "hexgrad/Kokoro-82M",
     speechModel: process.env.HF_SPEECH_MODEL || "openai/whisper-small",
   },
   uploadsDir: process.env.UPLOADS_DIR || "./uploads",
