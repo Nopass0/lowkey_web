@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "fs";
+import { readFile } from "fs/promises";
 import { resolve } from "path";
 import { VoidClient, parseSchemaFile } from "@voiddb/orm";
 import { config } from "./config";
+import { db } from "./db";
 
 const SCHEMA_PATH = resolve(import.meta.dir, "../.voiddb/schema/english.schema");
 
@@ -69,5 +71,56 @@ export async function syncEnglishSchemaOnStartup() {
     for (const operation of plan.operations) {
       console.log(`[voiddb] APPLY ${operation.summary}`);
     }
+  }
+}
+
+function guessImageContentType(fileName: string) {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  return "image/jpeg";
+}
+
+export async function backfillLegacyAvatarsToBlob() {
+  const users = await db.findMany("EnglishUsers", {
+    filters: [db.filter.contains("avatarUrl", "/uploads/avatars/")],
+    limit: 500,
+  });
+
+  for (const user of users) {
+    const avatarUrl = typeof user.avatarUrl === "string" ? user.avatarUrl : "";
+    if (!avatarUrl.startsWith("/uploads/avatars/")) {
+      continue;
+    }
+
+    const fileName = avatarUrl.split("/").pop();
+    if (!fileName) {
+      continue;
+    }
+
+    const filePath = resolve(config.uploadsDir, "avatars", fileName);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+
+    const buffer = await readFile(filePath);
+
+    try {
+      await db.deleteFile("EnglishUsers", user.id, "avatar");
+    } catch {
+      // Ignore missing previous blob.
+    }
+
+    const avatarRef = await db.uploadFile("EnglishUsers", user.id, "avatar", buffer, {
+      filename: fileName,
+      contentType: guessImageContentType(fileName),
+    });
+
+    await db.update("EnglishUsers", user.id, {
+      avatarUrl: await db.blobUrl("EnglishUsers", avatarRef),
+    });
+
+    console.log(`[voiddb] migrated avatar for user ${user.id}`);
   }
 }

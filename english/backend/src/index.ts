@@ -18,7 +18,7 @@ import { dictionaryRoutes } from "./dictionary/routes";
 import { socialRoutes } from "./social/routes";
 import { initBot, sendDailyReminders, getBot } from "./telegram/bot";
 import { db } from "./db";
-import { syncEnglishSchemaOnStartup } from "./voiddb-sync";
+import { backfillLegacyAvatarsToBlob, syncEnglishSchemaOnStartup } from "./voiddb-sync";
 
 await mkdir(config.uploadsDir, { recursive: true });
 await mkdir(`${config.uploadsDir}/recordings`, { recursive: true });
@@ -27,6 +27,9 @@ await mkdir(`${config.uploadsDir}/cards`, { recursive: true });
 await mkdir(`${config.uploadsDir}/decks`, { recursive: true });
 await syncEnglishSchemaOnStartup().catch((error) => {
   console.error("[voiddb] startup schema sync failed:", error);
+});
+await backfillLegacyAvatarsToBlob().catch((error) => {
+  console.error("[voiddb] legacy avatar backfill failed:", error);
 });
 
 async function seedPlans() {
