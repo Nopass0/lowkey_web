@@ -1,5 +1,6 @@
 import Elysia, { t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
+import { config } from "../config";
 import { db } from "../db";
 import { getAiSettings } from "./settings";
 
