@@ -83,8 +83,6 @@
 .btn-gradient {
   background: linear-gradient(135deg, hsl(221 83% 55%) 0%, hsl(265 89% 62%) 100%);
   @apply text-white font-medium transition-all duration-200
-         shadow-[0_2px_8px_rgba(99,102,241,0.30)]
-         hover:shadow-[0_4px_16px_rgba(99,102,241,0.40)]
          hover:brightness-110 active:scale-[0.98];
 }
 
@@ -193,4 +191,18 @@
   background: hsl(var(--card) / 0.97);
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
+}
+
+.modal-backdrop {
+  background: hsl(var(--background) / 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+.select-styled {
+  @apply w-full h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground
+         focus:outline-none focus:ring-1 focus:ring-ring transition-colors;
 }

@@ -1,10 +1,12 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Timer, Star, Zap, Volume2, BookmarkPlus, RotateCcw, Trophy } from "lucide-react";
+import {
+  Timer, Zap, Volume2, BookmarkPlus, RotateCcw,
+  Trophy, ChevronRight, Check, Lightbulb, Star,
+  Gamepad2, ArrowRight, Flame
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { aiApi, gamesApi } from "@/api/client";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
@@ -18,6 +20,14 @@ interface GameWord {
   pronunciation: string;
   examples: string[];
 }
+
+const DIFFICULTIES = [
+  { id: "easy",   label: "Лёгкий",    desc: "A1–A2 слова",      color: "from-emerald-500/20 to-green-500/10",   border: "border-emerald-500/30",   text: "text-emerald-500",   icon: "🌱" },
+  { id: "medium", label: "Средний",   desc: "B1–B2 слова",      color: "from-blue-500/20 to-indigo-500/10",     border: "border-blue-500/30",      text: "text-blue-500",     icon: "⚡" },
+  { id: "hard",   label: "Сложный",   desc: "C1–C2 слова",      color: "from-red-500/20 to-orange-500/10",      border: "border-red-500/30",       text: "text-red-500",      icon: "🔥" },
+];
+
+const TOTAL_ROUNDS = 5;
 
 export default function GamesPage() {
   const [gameState, setGameState] = useState<"menu" | "playing" | "result">("menu");
@@ -34,17 +44,12 @@ export default function GamesPage() {
   const [usedWords, setUsedWords] = useState<string[]>([]);
   const [savedWords, setSavedWords] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
-  const TOTAL_ROUNDS = 5;
 
   useEffect(() => {
     if (gameState !== "playing" || !currentWord || revealed) return;
     const t = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(t);
-          handleReveal();
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(t); handleReveal(); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -65,20 +70,12 @@ export default function GamesPage() {
 
   const loadNextWord = async (used: string[]) => {
     setLoading(true);
-    setRevealedClues(1);
-    setGuess("");
-    setRevealed(false);
-    setTimeLeft(30);
+    setRevealedClues(1); setGuess(""); setRevealed(false); setTimeLeft(30);
     try {
       const word = await aiApi.associationGame({ words: used, difficulty });
       setCurrentWord(word);
     } catch { toast.error("Ошибка загрузки слова"); }
     finally { setLoading(false); }
-  };
-
-  const handleRevealClue = () => {
-    if (!currentWord) return;
-    setRevealedClues((prev) => Math.min(prev + 1, currentWord.clues.length));
   };
 
   const handleGuess = () => {
@@ -88,10 +85,10 @@ export default function GamesPage() {
       const pts = Math.max(10, 50 - (revealedClues - 1) * 10) + Math.floor(timeLeft * 0.5);
       setScore((s) => s + pts);
       setCorrect((c) => c + 1);
-      toast.success(`+${pts} очков! 🎉`);
+      toast.success(`+${pts} очков!`);
       nextRound(true);
     } else {
-      toast.error("Не правильно, попробуй ещё раз");
+      toast.error("Неверно — попробуй ещё");
     }
   };
 
@@ -116,7 +113,7 @@ export default function GamesPage() {
       }
       setGameState("result");
     } else {
-      setTimeout(() => loadNextWord(newUsed), 500);
+      setTimeout(() => loadNextWord(newUsed), 400);
     }
   };
 
@@ -124,179 +121,294 @@ export default function GamesPage() {
     if (!currentWord || savedWords.includes(currentWord.targetWord)) return;
     try {
       await gamesApi.saveWord({
-        front: currentWord.targetWord,
-        back: currentWord.translation,
-        pronunciation: currentWord.pronunciation,
-        examples: currentWord.examples,
+        front: currentWord.targetWord, back: currentWord.translation,
+        pronunciation: currentWord.pronunciation, examples: currentWord.examples,
         tags: [currentWord.category, "game"],
       });
       setSavedWords((s) => [...s, currentWord.targetWord]);
-      toast.success("Слово сохранено как карточка! 📚");
+      toast.success(`"${currentWord.targetWord}" добавлено в карточки`);
     } catch { toast.error("Ошибка сохранения"); }
   };
 
   const speak = (text: string) => {
     if ("speechSynthesis" in window) {
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = "en-US"; u.rate = 0.8;
+      u.lang = "en-US"; u.rate = 0.85;
+      const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+      if (voices.length) u.voice = voices.find(v => v.name.includes("Google")) || voices[0];
       window.speechSynthesis.speak(u);
     }
   };
 
+  // ——— MENU ———
   if (gameState === "menu") return (
-    <div className="max-w-2xl mx-auto text-center">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="text-8xl mb-6 animate-float">🎮</div>
-        <h1 className="text-3xl font-bold mb-2">Игра Ассоциаций</h1>
-        <p className="text-muted-foreground mb-8">AI даёт подсказки — ты угадываешь английское слово. Новые слова сохраняются в карточки!</p>
-
-        <div className="glass-card rounded-2xl p-6 mb-6">
-          <h3 className="font-semibold mb-4">Выбери сложность</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { id: "easy", label: "Лёгкая", emoji: "🌱", desc: "Простые слова" },
-              { id: "medium", label: "Средняя", emoji: "⚡", desc: "Разнообразная" },
-              { id: "hard", label: "Сложная", emoji: "🔥", desc: "Продвинутые" },
-            ].map((d) => (
-              <button key={d.id} onClick={() => setDifficulty(d.id as any)}
-                className={cn("p-4 rounded-xl border transition-all", difficulty === d.id ? "border-primary bg-accent" : "border-border hover:bg-accent/50")}>
-                <div className="text-2xl mb-1">{d.emoji}</div>
-                <div className="font-semibold text-sm">{d.label}</div>
-                <div className="text-xs text-muted-foreground">{d.desc}</div>
-              </button>
-            ))}
-          </div>
+    <div className="max-w-lg mx-auto space-y-5 page-enter">
+      <div className="text-center pt-4 pb-2">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <Gamepad2 size={28} className="text-white" />
         </div>
+        <h1 className="text-2xl font-bold">Игра Ассоциаций</h1>
+        <p className="text-sm text-muted-foreground mt-1.5 max-w-xs mx-auto">
+          AI даёт подсказки — ты угадываешь английское слово
+        </p>
+      </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-8 text-sm text-muted-foreground">
-          {[["🎯", `${TOTAL_ROUNDS} раундов`], ["💡", "До 4 подсказок"], ["📚", "Слова → карточки"]].map(([e, t]) => (
-            <div key={t} className="glass-card rounded-xl p-3">
-              <div className="text-2xl mb-1">{e}</div>{t}
+      {/* Difficulty selector */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Сложность</p>
+        {DIFFICULTIES.map((d) => (
+          <motion.button
+            key={d.id}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setDifficulty(d.id as any)}
+            className={cn(
+              "w-full flex items-center gap-3 p-4 rounded-2xl border bg-gradient-to-r transition-all text-left",
+              difficulty === d.id
+                ? `${d.color} ${d.border} ring-2 ring-offset-1 ring-offset-background ${d.text.replace("text-", "ring-")}`
+                : "border-border/50 hover:border-border bg-card/50"
+            )}
+          >
+            <span className="text-2xl">{d.icon}</span>
+            <div className="flex-1">
+              <div className={cn("font-semibold text-sm", difficulty === d.id ? d.text : "")}>{d.label}</div>
+              <div className="text-xs text-muted-foreground">{d.desc}</div>
             </div>
-          ))}
-        </div>
+            <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+              difficulty === d.id ? `border-current ${d.text}` : "border-border")}>
+              {difficulty === d.id && <div className="w-2.5 h-2.5 rounded-full bg-current" />}
+            </div>
+          </motion.button>
+        ))}
+      </div>
 
-        <Button variant="gradient" size="xl" onClick={startGame} disabled={loading} className="px-12">
-          {loading ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Играть"}
-        </Button>
-      </motion.div>
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { icon: <Star size={16} className="text-yellow-500" />, label: `${TOTAL_ROUNDS} раундов` },
+          { icon: <Lightbulb size={16} className="text-blue-500" />, label: "До 4 подсказок" },
+          { icon: <BookmarkPlus size={16} className="text-violet-500" />, label: "Слова → карточки" },
+        ].map((item, i) => (
+          <div key={i} className="glass-card rounded-xl p-3 flex flex-col items-center gap-1.5 text-center">
+            {item.icon}
+            <span className="text-[11px] text-muted-foreground leading-tight">{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <Button
+        className="w-full btn-gradient h-12 text-base gap-2 font-semibold"
+        onClick={startGame} disabled={loading}
+      >
+        {loading
+          ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Загружаю...</>
+          : <><Gamepad2 size={18} />Начать игру</>
+        }
+      </Button>
     </div>
   );
 
-  if (gameState === "result") return (
-    <div className="max-w-md mx-auto text-center">
-      <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
-        <div className="text-7xl mb-4">{correct >= 4 ? "🏆" : correct >= 2 ? "🥈" : "💪"}</div>
-        <h2 className="text-2xl font-bold mb-2">Игра завершена!</h2>
-        <div className="glass-card rounded-2xl p-6 my-6 space-y-3">
-          <div className="flex justify-between"><span>Очки</span><span className="font-bold gradient-text text-xl">{score}</span></div>
-          <div className="flex justify-between"><span>Правильно</span><span className="text-green-400 font-semibold">{correct}/{TOTAL_ROUNDS}</span></div>
-          <div className="flex justify-between"><span>Слов изучено</span><span className="text-blue-400 font-semibold">{usedWords.length}</span></div>
-          <div className="flex justify-between"><span>Сохранено карточек</span><span className="text-purple-400 font-semibold">{savedWords.length}</span></div>
-        </div>
-        <div className="flex gap-3 justify-center">
-          <Button variant="outline" onClick={() => setGameState("menu")}><RotateCcw size={16} className="mr-2" />Заново</Button>
-          <Button variant="gradient" onClick={startGame} disabled={loading}>Ещё раунд</Button>
-        </div>
-      </motion.div>
-    </div>
-  );
+  // ——— RESULT ———
+  if (gameState === "result") {
+    const pct = Math.round((correct / TOTAL_ROUNDS) * 100);
+    return (
+      <div className="max-w-md mx-auto page-enter">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-5">
+          <div className="pt-4">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <Trophy size={36} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Игра завершена!</h2>
+            <p className="text-muted-foreground text-sm mt-1">{correct >= 4 ? "Отличный результат!" : correct >= 2 ? "Хорошая попытка!" : "Продолжайте практиковаться!"}</p>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 space-y-3">
+            {[
+              { label: "Очки", value: score, color: "gradient-text text-2xl font-bold" },
+              { label: "Правильных ответов", value: `${correct}/${TOTAL_ROUNDS}`, color: "text-emerald-500 font-semibold" },
+              { label: "Слов изучено", value: usedWords.length, color: "text-blue-500 font-semibold" },
+              { label: "Сохранено карточек", value: savedWords.length, color: "text-violet-500 font-semibold" },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className={row.color}>{row.value}</span>
+              </div>
+            ))}
+            {/* Progress bar */}
+            <div className="mt-2">
+              <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500"
+                />
+              </div>
+              <div className="text-[10px] text-muted-foreground text-right mt-1">{pct}% точность</div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 gap-2" onClick={() => setGameState("menu")}>
+              <RotateCcw size={15} />Меню
+            </Button>
+            <Button className="flex-1 btn-gradient gap-2" onClick={startGame} disabled={loading}>
+              <ArrowRight size={15} />Ещё раунд
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ——— PLAYING ———
+  const diff = DIFFICULTIES.find(d => d.id === difficulty);
+  const timerPct = (timeLeft / 30) * 100;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-xl mx-auto space-y-4 page-enter">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="text-xl font-bold gradient-text">{score} очков</div>
-          <Badge variant="outline">Раунд {round + 1}/{TOTAL_ROUNDS}</Badge>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent text-sm font-semibold">
+            <Flame size={14} className="text-orange-500" />
+            {score} очков
+          </div>
+          <span className="text-xs text-muted-foreground">Раунд {round + 1}/{TOTAL_ROUNDS}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Timer size={16} className={timeLeft <= 10 ? "text-red-400 animate-pulse" : "text-muted-foreground"} />
-          <span className={cn("font-mono font-bold", timeLeft <= 10 ? "text-red-400" : "")}>{timeLeft}с</span>
+        <div className={cn(
+          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-mono font-bold transition-colors",
+          timeLeft <= 10 ? "bg-red-500/15 text-red-500" : "bg-accent text-foreground"
+        )}>
+          <Timer size={13} className={timeLeft <= 10 ? "animate-pulse" : ""} />
+          {timeLeft}с
         </div>
       </div>
-      <Progress value={(timeLeft / 30) * 100} className="h-1.5" />
+
+      {/* Timer bar */}
+      <div className="h-1 rounded-full bg-secondary overflow-hidden">
+        <motion.div
+          className={cn("h-full rounded-full transition-colors", timeLeft <= 10 ? "bg-red-500" : "bg-gradient-to-r from-blue-500 to-violet-500")}
+          style={{ width: `${timerPct}%` }}
+          transition={{ duration: 0.5 }}
+        />
+      </div>
+
+      {/* Round progress dots */}
+      <div className="flex items-center justify-center gap-1.5">
+        {Array.from({ length: TOTAL_ROUNDS }).map((_, i) => (
+          <div key={i} className={cn(
+            "h-1.5 rounded-full transition-all",
+            i < round ? "bg-emerald-500 w-6" : i === round ? "bg-primary w-8" : "bg-border w-4"
+          )} />
+        ))}
+      </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="w-10 h-10 border-2 border-border border-t-primary rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-muted-foreground">AI придумывает слово...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="w-10 h-10 rounded-full border-2 border-border border-t-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">AI придумывает слово...</p>
         </div>
       ) : currentWord && (
         <AnimatePresence mode="wait">
-          <motion.div key={currentWord.targetWord} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="glass-card rounded-2xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Badge className="mb-2">{currentWord.category}</Badge>
-                  <h3 className="font-semibold text-lg">Угадай слово по подсказкам:</h3>
-                </div>
-                {revealed && (
-                  <button onClick={() => speak(currentWord.targetWord)} className="p-2 rounded-full bg-accent hover:bg-accent/80">
+          <motion.div key={currentWord.targetWord} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }} className="space-y-4">
+
+            {/* Category badge */}
+            <div className="flex items-center justify-between">
+              <span className={cn("text-xs font-semibold px-2.5 py-1 rounded-lg border", diff?.color, diff?.border, diff?.text)}>
+                {currentWord.category}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Подсказка {revealedClues}/{currentWord.clues.length}
+              </span>
+            </div>
+
+            {/* Clues */}
+            <div className="space-y-2">
+              {currentWord.clues.slice(0, revealedClues).map((clue, i) => (
+                <motion.div key={i}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={cn(
+                    "flex items-start gap-3 p-3.5 rounded-xl text-sm",
+                    i === revealedClues - 1
+                      ? "bg-primary/10 border border-primary/20"
+                      : "bg-accent/60"
+                  )}
+                >
+                  <span className="text-xs font-bold text-muted-foreground w-4 flex-shrink-0 mt-0.5">{i + 1}</span>
+                  <span className="leading-relaxed">{clue}</span>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Answer / Revealed */}
+            {revealed ? (
+              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
+                className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-green-500/5 p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-2xl font-bold">{currentWord.targetWord}</div>
+                    <div className="text-sm font-mono text-muted-foreground">{currentWord.pronunciation}</div>
+                    <div className="text-sm font-semibold mt-1">{currentWord.translation}</div>
+                  </div>
+                  <button onClick={() => speak(currentWord.targetWord)}
+                    className="p-2 rounded-xl bg-accent hover:bg-accent/80 text-muted-foreground hover:text-foreground transition-colors">
                     <Volume2 size={16} />
                   </button>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {currentWord.clues.slice(0, revealedClues).map((clue, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                    className={cn("p-3 rounded-xl text-sm", i === revealedClues - 1 ? "bg-gradient-to-r from-red-500/10 to-blue-500/10 border border-white/10" : "bg-accent/50")}>
-                    <span className="text-muted-foreground mr-2">{i + 1}.</span>{clue}
-                  </motion.div>
-                ))}
-              </div>
-
-              {revealed ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 rounded-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30">
-                  <div className="text-2xl font-bold mb-1">{currentWord.targetWord}</div>
-                  <div className="text-sm text-muted-foreground font-mono mb-1">{currentWord.pronunciation}</div>
-                  <div className="text-sm font-semibold">{currentWord.translation}</div>
-                  {currentWord.examples[0] && <div className="text-xs text-muted-foreground mt-2 italic">"{currentWord.examples[0]}"</div>}
-                  <div className="flex gap-2 mt-4">
-                    <Button variant="outline" size="sm" onClick={handleSaveWord} disabled={savedWords.includes(currentWord.targetWord)} className="gap-2">
-                      <BookmarkPlus size={14} />
-                      {savedWords.includes(currentWord.targetWord) ? "Сохранено" : "В карточки"}
-                    </Button>
-                    <Button variant="gradient" size="sm" onClick={() => nextRound(false)}>
-                      {round + 1 >= TOTAL_ROUNDS ? "Завершить" : "Следующее →"}
-                    </Button>
-                  </div>
-                </motion.div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      value={guess}
-                      onChange={(e) => setGuess(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleGuess()}
-                      placeholder="Введи слово по-английски..."
-                      className="flex-1 h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <Button variant="gradient" onClick={handleGuess} disabled={!guess.trim()}>
-                      <Check />
-                    </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    {revealedClues < (currentWord.clues.length || 4) && (
-                      <Button variant="outline" size="sm" onClick={handleRevealClue} className="gap-1">
-                        <Zap size={14} />Подсказка ({currentWord.clues.length - revealedClues} ост.)
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={handleReveal} className="text-muted-foreground">
-                      Показать ответ
-                    </Button>
-                  </div>
                 </div>
-              )}
-            </div>
+                {currentWord.examples[0] && (
+                  <p className="text-xs text-muted-foreground italic border-l-2 border-emerald-500/30 pl-3 mb-3">
+                    "{currentWord.examples[0]}"
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSaveWord}
+                    disabled={savedWords.includes(currentWord.targetWord)}>
+                    <BookmarkPlus size={13} />
+                    {savedWords.includes(currentWord.targetWord) ? "Сохранено" : "В карточки"}
+                  </Button>
+                  <Button size="sm" className="btn-gradient gap-1.5 flex-1" onClick={() => nextRound(false)}>
+                    {round + 1 >= TOTAL_ROUNDS ? "Завершить" : "Следующее"}
+                    <ChevronRight size={13} />
+                  </Button>
+                </div>
+              </motion.div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    value={guess}
+                    onChange={(e) => setGuess(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleGuess()}
+                    placeholder="Введи слово по-английски..."
+                    className="flex-1 h-11 rounded-xl border border-input bg-background px-4 text-sm focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+                    autoFocus
+                  />
+                  <Button
+                    className="btn-gradient h-11 px-4 gap-1.5"
+                    onClick={handleGuess} disabled={!guess.trim()}
+                  >
+                    <Check size={16} />
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  {revealedClues < currentWord.clues.length && (
+                    <Button variant="outline" size="sm" className="gap-1.5 flex-1"
+                      onClick={() => setRevealedClues(p => Math.min(p + 1, currentWord.clues.length))}>
+                      <Lightbulb size={13} className="text-yellow-500" />
+                      Подсказка ({currentWord.clues.length - revealedClues} ост.)
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={handleReveal}>
+                    Показать ответ
+                  </Button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       )}
     </div>
   );
 }
-
-function Check() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>; }

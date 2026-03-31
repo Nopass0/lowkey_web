@@ -236,6 +236,61 @@ Analyze their pronunciation accuracy (score 0-100) and provide constructive feed
     }),
   })
 
+  // Writing analysis
+  .post("/analyze-writing", async ({ headers, body, jwt, set }) => {
+    const user = await getUser(headers, jwt, set);
+
+    const systemPrompt = `You are an expert English writing coach. Analyze the student's English text and return a detailed JSON analysis.
+Return ONLY valid JSON matching this schema:
+{
+  "score": 85,
+  "grade": "B+",
+  "wordCount": 42,
+  "readabilityLevel": "Intermediate (B1)",
+  "correctedText": "...",
+  "errors": [
+    {
+      "text": "he go",
+      "correction": "he goes",
+      "explanation": "Third person singular requires -s ending",
+      "type": "grammar",
+      "offset": 12,
+      "length": 5
+    }
+  ],
+  "strengths": ["Good vocabulary range", "Clear sentence structure"],
+  "improvements": ["Work on verb conjugation", "Use more connectors"]
+}
+Error types: "grammar", "spelling", "style", "punctuation".
+offset/length point to the exact position in the original text.
+Provide explanations in Russian. Keep strengths/improvements in Russian.`;
+
+    const prompt = `Analyze this English text written by a ${user.level || "intermediate"} learner:\n\n"${body.text}"`;
+
+    const aiResponse = await callOpenRouter(prompt, systemPrompt);
+
+    const words = body.text.trim().split(/\s+/).length;
+    let result = {
+      score: 75, grade: "C+", wordCount: words,
+      readabilityLevel: "Intermediate (B1)",
+      correctedText: body.text,
+      errors: [] as any[],
+      strengths: ["Хорошая попытка", "Понятная структура"],
+      improvements: ["Продолжайте практиковаться"],
+    };
+
+    if (aiResponse) {
+      try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) result = { ...result, ...JSON.parse(jsonMatch[0]) };
+      } catch {}
+    }
+
+    return result;
+  }, {
+    body: t.Object({ text: t.String({ minLength: 10 }) }),
+  })
+
   // Daily learning plan
   .get("/daily-plan", async ({ headers, jwt, set }) => {
     const user = await getUser(headers, jwt, set);

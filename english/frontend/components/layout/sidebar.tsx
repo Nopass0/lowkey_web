@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, BookOpen, Brain, Mic, Gamepad2,
   TrendingUp, Settings, Crown, Shield,
-  BookMarked, Swords, Search, Volume2, FileText,
+  BookMarked, Swords, Search, Volume2, PenLine,
   ChevronRight, Star, Flame, Zap, LogOut, Sun, Moon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ const navGroups = [
       { href: "/pronunciation", icon: Volume2,    label: "Произношение" },
       { href: "/games",         icon: Gamepad2,   label: "Игры" },
       { href: "/quests",        icon: Swords,     label: "Квесты" },
-      { href: "/recordings",    icon: Mic,        label: "Записи" },
+      { href: "/writing",       icon: PenLine,    label: "Письмо" },
     ],
   },
   {
@@ -62,17 +62,26 @@ export function Sidebar() {
   const planLabel = user?.isPremium ? "Premium" : "Бесплатный";
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-60 flex flex-col z-40 border-r"
+    <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 flex-col z-40 border-r"
       style={{ background: "hsl(var(--sidebar))", borderColor: "hsl(var(--sidebar-border))" }}>
 
       {/* Logo */}
       <div className="px-5 pt-6 pb-5">
         <Link href="/dashboard" className="flex items-center gap-3 group">
           <div className="relative w-9 h-9 flex-shrink-0">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-lg shadow-blue-500/25" />
-            <div className="absolute inset-0 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-sm tracking-tight">LK</span>
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 32 32" className="drop-shadow-sm">
+              <defs>
+                <linearGradient id="sg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#3b82f6"/>
+                  <stop offset="1" stopColor="#7c3aed"/>
+                </linearGradient>
+              </defs>
+              <rect width="32" height="32" rx="8" fill="url(#sg)"/>
+              <circle cx="11.5" cy="16" r="5" fill="none" stroke="white" strokeWidth="2.5"/>
+              <rect x="15" y="14.75" width="11.5" height="2.5" rx="1.25" fill="white"/>
+              <rect x="21" y="17.25" width="2.5" height="3.75" rx="1.25" fill="white"/>
+              <rect x="24.5" y="17.25" width="2" height="2.75" rx="1" fill="white"/>
+            </svg>
           </div>
           <div className="leading-none">
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">LowKey</div>

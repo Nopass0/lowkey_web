@@ -34,6 +34,7 @@ export default function DictionaryPage() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [savingCard, setSavingCard] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [recentWords, setRecentWords] = useState<string[]>([]);
   const { decks, fetchDecks } = useCardsStore();
   const [selectedDeck, setSelectedDeck] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +44,10 @@ export default function DictionaryPage() {
     fetchDecks();
     dictionaryApi.wordOfDay().then(setWordOfDay).catch(() => {});
     if (searchParams.get("q")) lookup(searchParams.get("q")!);
+    try {
+      const stored = localStorage.getItem("dict_recent");
+      if (stored) setRecentWords(JSON.parse(stored));
+    } catch {}
   }, []);
 
   const lookup = async (word: string) => {
@@ -53,6 +58,10 @@ export default function DictionaryPage() {
       const data = await dictionaryApi.lookup(word.trim());
       setEntry(data);
       setQuery(data.word);
+      // Save to recent
+      const updated = [data.word, ...recentWords.filter(w => w !== data.word)].slice(0, 8);
+      setRecentWords(updated);
+      localStorage.setItem("dict_recent", JSON.stringify(updated));
     } catch { toast.error("Слово не найдено"); }
     finally { setLoading(false); }
   };
@@ -158,6 +167,26 @@ export default function DictionaryPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Recent words */}
+      <AnimatePresence>
+        {recentWords.length > 0 && !entry && !loading && (
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="space-y-2">
+            <p className="text-xs text-muted-foreground font-medium px-1">Недавно искали</p>
+            <div className="flex flex-wrap gap-2">
+              {recentWords.map((w) => (
+                <motion.button key={w} whileTap={{ scale: 0.95 }}
+                  onClick={() => lookup(w)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-accent hover:bg-accent/80 text-muted-foreground hover:text-foreground border border-border/40 transition-colors"
+                >
+                  {w}
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Entry */}
       <AnimatePresence mode="wait">

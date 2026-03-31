@@ -8,6 +8,7 @@ export interface Deck {
   description?: string;
   emoji: string;
   color: string;
+  imageUrl?: string;
   cardCount: number;
   category: string;
   isPublic: boolean;

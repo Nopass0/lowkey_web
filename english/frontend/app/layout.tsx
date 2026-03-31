@@ -7,9 +7,13 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "LowKey English",
-  description: "AI flashcards, games, pronunciation practice, and progress tracking for English learners.",
-  keywords: ["english", "flashcards", "ai", "pronunciation", "lowkey english"],
+  title: { default: "LowKey English", template: "%s · LowKey English" },
+  description: "AI flashcards, grammar, pronunciation practice, and progress tracking for English learners.",
+  keywords: ["english", "flashcards", "ai", "pronunciation", "lowkey english", "grammar"],
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg" }],
+  },
 };
 
 export const viewport: Viewport = {

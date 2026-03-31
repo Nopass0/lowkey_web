@@ -15,11 +15,15 @@ import { progressRoutes } from "./progress/routes";
 import { grammarRoutes } from "./grammar/routes";
 import { questsRoutes } from "./quests/routes";
 import { dictionaryRoutes } from "./dictionary/routes";
+import { socialRoutes } from "./social/routes";
 import { initBot, sendDailyReminders, getBot } from "./telegram/bot";
 import { db } from "./db";
 
 await mkdir(config.uploadsDir, { recursive: true });
 await mkdir(`${config.uploadsDir}/recordings`, { recursive: true });
+await mkdir(`${config.uploadsDir}/avatars`, { recursive: true });
+await mkdir(`${config.uploadsDir}/cards`, { recursive: true });
+await mkdir(`${config.uploadsDir}/decks`, { recursive: true });
 
 async function seedPlans() {
   const existing = await db.findMany("EnglishSubscriptionPlans", { limit: 1 });
@@ -105,6 +109,7 @@ const app = new Elysia()
   .use(grammarRoutes)
   .use(questsRoutes)
   .use(dictionaryRoutes)
+  .use(socialRoutes)
   .onError(({ error, set }) => {
     console.error("[error]", error);
     const message = error instanceof Error ? error.message : "Internal server error";

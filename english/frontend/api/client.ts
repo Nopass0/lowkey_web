@@ -36,6 +36,10 @@ export const authApi = {
   update: (data: any) => apiClient.patch("/auth/me", data).then((r) => r.data),
   changePassword: (data: any) => apiClient.post("/auth/change-password", data).then((r) => r.data),
   linkTelegram: (data: any) => apiClient.post("/auth/link-telegram", data).then((r) => r.data),
+  uploadAvatar: (file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return apiClient.post("/auth/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
 };
 
 // Cards & Decks
@@ -53,6 +57,10 @@ export const cardsApi = {
     const fd = new FormData(); fd.append("file", file);
     return apiClient.post(`/cards/${id}/upload-image`, fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
   },
+  uploadDeckImage: (id: string, file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return apiClient.post(`/cards/decks/${id}/upload-image`, fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+  },
   generateByTopic: (data: any) => apiClient.post("/cards/generate-by-topic", data).then((r) => r.data),
   review: (data: { cardId: string; quality: number; sessionId?: string }) =>
     apiClient.post("/cards/review", data).then((r) => r.data),
@@ -67,6 +75,7 @@ export const aiApi = {
   generateCardsBulk: (data: any) => apiClient.post("/ai/generate-cards-bulk", data).then((r) => r.data),
   associationGame: (data: any) => apiClient.post("/ai/association-game", data).then((r) => r.data),
   analyzePronunciation: (data: any) => apiClient.post("/ai/analyze-pronunciation", data).then((r) => r.data),
+  analyzeWriting: (data: { text: string }) => apiClient.post("/ai/analyze-writing", data).then((r) => r.data),
   getDailyPlan: () => apiClient.get("/ai/daily-plan").then((r) => r.data),
 };
 
@@ -130,6 +139,39 @@ export const dictionaryApi = {
   search: (q: string) => apiClient.get("/dictionary/search", { params: { q } }).then((r) => r.data),
   wordOfDay: () => apiClient.get("/dictionary/word-of-day").then((r) => r.data),
   saveCard: (data: { word: string; deckId?: string }) => apiClient.post("/dictionary/save-card", data).then((r) => r.data),
+};
+
+// Social / Leaderboard
+export const socialApi = {
+  getLeaderboard: (params?: { type?: string; limit?: number }) =>
+    apiClient.get("/social/leaderboard", { params }).then(r => r.data),
+  getProfile: (userId: string) =>
+    apiClient.get(`/social/profile/${userId}`).then(r => r.data),
+  createGroup: (data: any) => apiClient.post("/social/groups", data).then(r => r.data),
+  getGroups: () => apiClient.get("/social/groups").then(r => r.data),
+  getGroup: (id: string) => apiClient.get(`/social/groups/${id}`).then(r => r.data),
+  joinGroup: (id: string, inviteCode: string) => apiClient.post(`/social/groups/${id}/join`, { inviteCode }).then(r => r.data),
+  updateGroup: (id: string, data: any) => apiClient.patch(`/social/groups/${id}`, data).then(r => r.data),
+  removeMember: (groupId: string, userId: string) => apiClient.delete(`/social/groups/${groupId}/members/${userId}`).then(r => r.data),
+  regenerateInvite: (id: string) => apiClient.post(`/social/groups/${id}/regenerate-invite`).then(r => r.data),
+  getCourses: (groupId: string) => apiClient.get(`/social/groups/${groupId}/courses`).then(r => r.data),
+  createCourse: (groupId: string, data: any) => apiClient.post(`/social/groups/${groupId}/courses`, data).then(r => r.data),
+  getCourse: (groupId: string, courseId: string) => apiClient.get(`/social/groups/${groupId}/courses/${courseId}`).then(r => r.data),
+  updateCourse: (groupId: string, courseId: string, data: any) => apiClient.patch(`/social/groups/${groupId}/courses/${courseId}`, data).then(r => r.data),
+  deleteCourse: (groupId: string, courseId: string) => apiClient.delete(`/social/groups/${groupId}/courses/${courseId}`).then(r => r.data),
+  addBlock: (groupId: string, courseId: string, data: any) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/blocks`, data).then(r => r.data),
+  updateBlock: (groupId: string, courseId: string, blockId: string, data: any) => apiClient.patch(`/social/groups/${groupId}/courses/${courseId}/blocks/${blockId}`, data).then(r => r.data),
+  deleteBlock: (groupId: string, courseId: string, blockId: string) => apiClient.delete(`/social/groups/${groupId}/courses/${courseId}/blocks/${blockId}`).then(r => r.data),
+  reorderBlocks: (groupId: string, courseId: string, order: any[]) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/blocks/reorder`, { order }).then(r => r.data),
+  createTest: (groupId: string, courseId: string, data: any) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/tests`, data).then(r => r.data),
+  getTest: (groupId: string, courseId: string, testId: string) => apiClient.get(`/social/groups/${groupId}/courses/${courseId}/tests/${testId}`).then(r => r.data),
+  updateTest: (groupId: string, courseId: string, testId: string, data: any) => apiClient.patch(`/social/groups/${groupId}/courses/${courseId}/tests/${testId}`, data).then(r => r.data),
+  deleteTest: (groupId: string, courseId: string, testId: string) => apiClient.delete(`/social/groups/${groupId}/courses/${courseId}/tests/${testId}`).then(r => r.data),
+  submitTest: (groupId: string, courseId: string, testId: string, data: any) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/tests/${testId}/submit`, data).then(r => r.data),
+  getTestResults: (groupId: string, courseId: string, testId: string) => apiClient.get(`/social/groups/${groupId}/courses/${courseId}/tests/${testId}/results`).then(r => r.data),
+  getGroupProgress: (groupId: string) => apiClient.get(`/social/groups/${groupId}/progress`).then(r => r.data),
+  markBlockComplete: (groupId: string, courseId: string, blockId: string) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/progress/mark-block`, { blockId }).then(r => r.data),
+  aiGenerateBlocks: (groupId: string, courseId: string, data: any) => apiClient.post(`/social/groups/${groupId}/courses/${courseId}/ai-generate-blocks`, data).then(r => r.data),
 };
 
 // Admin

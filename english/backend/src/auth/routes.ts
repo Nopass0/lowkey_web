@@ -139,6 +139,38 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     }
   )
   .post(
+    "/avatar",
+    async ({ headers, jwt, set, request }) => {
+      const token = headers.authorization?.replace("Bearer ", "");
+      if (!token) { set.status = 401; return { error: "Unauthorized" }; }
+      const payload = await jwt.verify(token);
+      if (!payload) { set.status = 401; return { error: "Invalid token" }; }
+      const userId = (payload as any).userId;
+
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) { set.status = 400; return { error: "No file" }; }
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const allowed = ["jpg", "jpeg", "png", "webp", "gif"];
+      if (!allowed.includes(ext)) { set.status = 400; return { error: "Invalid file type" }; }
+      if (file.size > 5 * 1024 * 1024) { set.status = 400; return { error: "File too large (max 5MB)" }; }
+
+      const dir = "./uploads/avatars";
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(dir, { recursive: true });
+
+      const filename = `${userId}.${ext}`;
+      const buf = await file.arrayBuffer();
+      await Bun.write(`${dir}/${filename}`, buf);
+
+      const avatarUrl = `/uploads/avatars/${filename}`;
+      const updated = await db.update("EnglishUsers", userId, { avatarUrl });
+      const { passwordHash: _, ...safeUser } = updated;
+      return safeUser;
+    }
+  )
+  .post(
     "/link-telegram",
     async ({ headers, body, jwt, set }) => {
       const token = headers.authorization?.replace("Bearer ", "");

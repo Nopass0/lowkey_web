@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { BottomNav } from "@/components/layout/bottom-nav";
 import { useAuthStore } from "@/store/auth";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -20,8 +21,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-background">
       <Sidebar />
       <Topbar title="Администрирование" />
-      <main className="ml-60 pt-14 min-h-screen">
-        <div className="p-6">{children}</div>
+      <BottomNav />
+      <main className="md:ml-60 pt-14 min-h-screen pb-20 md:pb-0">
+        <div className="p-4 md:p-6">{children}</div>
       </main>
     </div>
   );

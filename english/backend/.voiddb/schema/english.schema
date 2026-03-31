@@ -316,4 +316,105 @@ database {
     updatedAt DateTime @default(now()) @updatedAt
     @@map("EnglishSiteSettings")
   }
+
+  model EnglishGroups {
+    id String @id @map("_id")
+    name String
+    description String?
+    ownerId String
+    inviteCode String @unique
+    imageUrl String?
+    color String @default("#6366f1")
+    emoji String @default("📚")
+    isPublic Boolean @default(false)
+    maxMembers Int @default(50)
+    memberCount Int @default(1)
+    courseCount Int @default(0)
+    tags Json[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishGroups")
+  }
+
+  model EnglishGroupMembers {
+    id String @id @map("_id")
+    groupId String
+    userId String
+    role String @default("student")
+    joinedAt DateTime @default(now())
+    @@map("EnglishGroupMembers")
+  }
+
+  model EnglishCourses {
+    id String @id @map("_id")
+    groupId String
+    authorId String
+    title String
+    description String?
+    imageUrl String?
+    color String @default("#6366f1")
+    emoji String @default("📖")
+    level String @default("beginner")
+    isPublished Boolean @default(false)
+    blockCount Int @default(0)
+    estimatedMinutes Int @default(0)
+    orderIndex Int @default(0)
+    aiGenerated Boolean @default(false)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishCourses")
+  }
+
+  model EnglishCourseBlocks {
+    id String @id @map("_id")
+    courseId String
+    type String
+    title String?
+    content Json
+    orderIndex Int @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishCourseBlocks")
+  }
+
+  model EnglishCourseTests {
+    id String @id @map("_id")
+    courseId String
+    blockId String?
+    groupId String
+    title String
+    description String?
+    timeLimitSeconds Int?
+    passingScore Int @default(70)
+    questions Json[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now()) @updatedAt
+    @@map("EnglishCourseTests")
+  }
+
+  model EnglishTestAttempts {
+    id String @id @map("_id")
+    testId String
+    userId String
+    groupId String
+    courseId String?
+    answers Json[]
+    score Int @default(0)
+    passed Boolean @default(false)
+    timeTakenSeconds Int @default(0)
+    completedAt DateTime @default(now())
+    @@map("EnglishTestAttempts")
+  }
+
+  model EnglishStudentProgress {
+    id String @id @map("_id")
+    userId String
+    groupId String
+    courseId String
+    completedBlockIds Json[]
+    testScores Json[]
+    lastActivityAt DateTime @default(now())
+    percentComplete Int @default(0)
+    @@map("EnglishStudentProgress")
+  }
 }

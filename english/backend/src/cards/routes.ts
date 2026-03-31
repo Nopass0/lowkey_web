@@ -67,6 +67,31 @@ export const cardsRoutes = new Elysia({ prefix: "/cards" })
     return { success: true };
   })
 
+  // === DECK IMAGE UPLOAD ===
+  .post("/decks/:id/upload-image", async ({ headers, params, jwt, set, request }) => {
+    const user = await getUser(headers, jwt, set);
+    const deck = await db.findOne("EnglishDecks", [
+      db.filter.eq("id", params.id),
+      db.filter.eq("userId", user.id),
+    ]);
+    if (!deck) { set.status = 404; return { error: "Not found" }; }
+
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) { set.status = 400; return { error: "No file" }; }
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    if (!["jpg","jpeg","png","webp"].includes(ext)) { set.status = 400; return { error: "Invalid type" }; }
+    if (file.size > 5 * 1024 * 1024) { set.status = 400; return { error: "Too large" }; }
+
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir("./uploads/decks", { recursive: true });
+    const filename = `${params.id}.${ext}`;
+    await Bun.write(`./uploads/decks/${filename}`, await file.arrayBuffer());
+    const imageUrl = `/uploads/decks/${filename}`;
+    return db.update("EnglishDecks", params.id, { imageUrl });
+  })
+
   // === CARDS ===
   .get("/", async ({ headers, query, jwt, set }) => {
     const user = await getUser(headers, jwt, set);
