@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Globe, Shield, Zap } from "lucide-react";
 import { LandingFooter } from "@/components/landing-footer";
+import styles from "./legacy.module.css";
 
 const TG_PROXY_LINK =
   "tg://proxy?server=s1.lowkey.su&port=8443&secret=dd1cc273b362e8d906c0d94213ef7087cf";
@@ -9,9 +10,9 @@ const TG_PROXY_SHARE_LINK =
   "https://t.me/proxy?server=s1.lowkey.su&port=8443&secret=dd1cc273b362e8d906c0d94213ef7087cf";
 
 const pageTitle =
-  "MTProto прокси для Telegram: включить VPN, ускоритель интернета и белый интернет";
+  "MTProto прокси для Telegram и SMM: включить VPN, ускоритель интернета и белый интернет";
 const pageDescription =
-  "Публичная страница lowkey для быстрого подключения MTProto proxy в Telegram. Подходит, когда Telegram не работает, нужен белый интернет, быстрый доступ к мессенджеру и кнопка подключения в одно нажатие.";
+  "Публичная страница lowkey для быстрого подключения MTProto proxy в Telegram. Подходит для SMM, когда Telegram не работает, нужен белый интернет, быстрый доступ к мессенджеру и кнопка подключения в одно нажатие.";
 
 const faqItems = [
   {
@@ -62,6 +63,9 @@ export const metadata: Metadata = {
     "mtproto lowkey",
     "telegram vpn",
     "подключить прокси telegram",
+    "SMM telegram proxy",
+    "СММ telegram proxy",
+    "прокси для СММ telegram",
   ],
   alternates: {
     canonical: "/telegram-proxy",
@@ -119,7 +123,7 @@ function SeoJsonLd() {
 
 export default function TelegramProxyPage() {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.22),_transparent_38%),linear-gradient(180deg,_rgba(9,9,11,1)_0%,_rgba(10,10,14,1)_46%,_rgba(7,7,10,1)_100%)] text-foreground">
+    <div className={`${styles.page} min-h-screen bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.22),_transparent_38%),linear-gradient(180deg,_rgba(9,9,11,1)_0%,_rgba(10,10,14,1)_46%,_rgba(7,7,10,1)_100%)] text-foreground`}>
       <SeoJsonLd />
 
       <main>

@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://lowkey.su";
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lowkey.su").replace(
+  /\/$/,
+  "",
+);
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -46,7 +49,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${siteUrl}/telegram-proxy`,
       lastModified: now,
       changeFrequency: "daily",
-      priority: 0.95,
+      priority: 1,
     },
     {
       url: `${siteUrl}/legal/ai-offer`,

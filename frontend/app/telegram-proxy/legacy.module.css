@@ -1,0 +1,219 @@
+.page {
+  min-height: 100vh;
+  background-color: #09090b;
+  background-image:
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.22), transparent 38%),
+    linear-gradient(180deg, #09090b 0%, #0a0a0e 46%, #07070a 100%);
+  color: #f8fafc;
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+.page main {
+  display: block;
+}
+
+.page section {
+  display: block;
+  padding: 48px 16px;
+}
+
+.page main > section:first-child {
+  padding-top: 32px;
+}
+
+.page main > section:last-child {
+  padding-top: 16px;
+  padding-bottom: 64px;
+}
+
+.page section > div {
+  max-width: 1152px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.page h1,
+.page h2,
+.page h3 {
+  margin-top: 0;
+  color: #f8fafc;
+}
+
+.page h1 {
+  max-width: 896px;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.page h2 {
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.page h3 {
+  font-size: 18px;
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+.page p,
+.page li {
+  color: #a8a8b2;
+}
+
+.page p {
+  line-height: 1.75;
+}
+
+.page a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  color: #bae6fd;
+}
+
+.page article,
+.page aside {
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  background-color: rgba(17, 24, 39, 0.58);
+}
+
+.page aside {
+  padding: 24px;
+}
+
+.page [class*="rounded"] {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.page [class*="bg-background"],
+.page [class*="bg-black"] {
+  background-color: rgba(17, 24, 39, 0.58);
+}
+
+.page [class*="bg-primary"] {
+  background-color: rgba(37, 99, 235, 0.18);
+}
+
+.page [class*="text-muted"] {
+  color: #a8a8b2;
+}
+
+.page [class*="text-primary"] {
+  color: #60a5fa;
+}
+
+.page [href^="tg://"],
+.page [href^="https://t.me/proxy"] {
+  display: inline-block;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+}
+
+.page [href^="tg://"] {
+  background-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.35);
+}
+
+.page [href^="https://t.me/proxy"] {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(17, 24, 39, 0.62);
+  color: #f8fafc;
+}
+
+.page [class*="grid"],
+.page [class*="flex"] {
+  display: block;
+}
+
+.page [class*="grid"] > *,
+.page [class*="flex"] > * {
+  margin-bottom: 16px;
+}
+
+@supports (display: flex) {
+  .page [class*="flex"] {
+    display: flex;
+  }
+
+  .page [class*="flex"] > * {
+    margin-bottom: 0;
+  }
+}
+
+@supports (display: grid) {
+  .page [class*="grid"] {
+    display: grid;
+    gap: 20px;
+  }
+
+  .page [class*="grid"] > * {
+    margin-bottom: 0;
+  }
+}
+
+@media (min-width: 640px) {
+  .page [class*="sm:grid-cols-2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page [class*="sm:grid-cols-3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .page [class*="sm:flex-row"] {
+    flex-direction: row;
+  }
+}
+
+@media (min-width: 768px) {
+  .page section {
+    padding: 64px 32px;
+  }
+
+  .page h1 {
+    font-size: 60px;
+  }
+
+  .page h2 {
+    font-size: 40px;
+  }
+
+  .page [class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page [class*="md:grid-cols-3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .page [class*="lg:grid-cols-3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .page [class*="lg:grid-cols"] {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+}
