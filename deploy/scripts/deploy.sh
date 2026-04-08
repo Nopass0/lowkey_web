@@ -342,7 +342,9 @@ deploy_stack() {
   export DOCKER_BUILDKIT=1
   export COMPOSE_DOCKER_CLI_BUILD=1
 
-  "${compose_cmd[@]}" up -d --build --remove-orphans bitnet ollama backend frontend n8n
+  # Keep the public site and API deploy independent from optional AI services.
+  # BitNet/N8N are expensive and can fail independently without taking prod down.
+  "${compose_cmd[@]}" up -d --build --remove-orphans ollama backend frontend
 
   local backend_url="http://127.0.0.1:${BACKEND_BIND_PORT}/"
   local frontend_url="http://127.0.0.1:${FRONTEND_BIND_PORT}/"
@@ -376,36 +378,7 @@ deploy_stack() {
     exit 1
   fi
 
-  local bitnet_url="http://127.0.0.1:${BITNET_BIND_PORT}/v1/models"
-
-  for attempt in {1..48}; do
-    if curl -fsS "${bitnet_url}" >/dev/null; then
-      break
-    fi
-    sleep 5
-  done
-
-  if ! curl -fsS "${bitnet_url}" >/dev/null; then
-    echo "BitNet did not become healthy: ${bitnet_url}" >&2
-    "${compose_cmd[@]}" ps >&2 || true
-    "${compose_cmd[@]}" logs --tail=200 bitnet >&2 || true
-    exit 1
-  fi
-
-  local n8n_url="http://127.0.0.1:${N8N_BIND_PORT}/"
-
-  for attempt in {1..36}; do
-    if curl -fsS "${n8n_url}" >/dev/null; then
-      "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3.5:0.8b}" || true
-      return
-    fi
-    sleep 5
-  done
-
-  echo "n8n did not become healthy: ${n8n_url}" >&2
-  "${compose_cmd[@]}" ps >&2 || true
-  "${compose_cmd[@]}" logs --tail=200 n8n >&2 || true
-  exit 1
+  "${compose_cmd[@]}" exec -T ollama ollama pull "${AI_LOCAL_MODEL:-qwen3.5:0.8b}" || true
 }
 
 ensure_server_packages
