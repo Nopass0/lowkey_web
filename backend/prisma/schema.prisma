@@ -35,6 +35,8 @@ model User {
   vpnMaxConcurrentConnections Int?
   vpnSpeedLimitUpMbps       Int?
   vpnSpeedLimitDownMbps     Int?
+  lastAndroidVersion        String?
+  lastAndroidSeenAt         DateTime?
   devices                   Device[]
   aiConversations           AiConversation[]
   aiFiles                   AiFile[]

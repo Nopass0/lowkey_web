@@ -258,6 +258,14 @@ export default function AdminUserDetailsPage() {
             ID: {data.user.id} · В системе с{" "}
             {new Date(data.user.joinedAt).toLocaleDateString("ru-RU")}
           </p>
+          {(data.user as any).lastAndroidSeenAt && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="bg-green-500/15 text-green-400 text-[11px] font-bold px-3 py-1 rounded-full border border-green-500/30">
+                📱 Android-клиент v{(data.user as any).lastAndroidVersion ?? "?"} · последний раз{" "}
+                {new Date((data.user as any).lastAndroidSeenAt).toLocaleString("ru-RU")}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

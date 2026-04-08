@@ -75,6 +75,13 @@ function buildVlessLink(
         "flow=xtls-rprx-vision&security=reality",
       );
     }
+    if (
+      normalized.includes("security=reality") &&
+      !normalized.includes("packetEncoding=")
+    ) {
+      const separator = normalized.includes("?") ? "&" : "?";
+      normalized = `${normalized}${separator}packetEncoding=xudp`;
+    }
     link = `${normalized}${tag ? `#${tag}` : ""}`;
   }
 
@@ -127,8 +134,21 @@ export const userRoutes = new Elysia({ prefix: "/user" })
   .use(authMiddleware)
 
   // ─── GET /user/profile ─────────────────────────────────
-  .get("/profile", async ({ user, set }) => {
+  .get("/profile", async ({ user, set, headers }) => {
     try {
+      // Track Android client usage (fire-and-forget, non-blocking)
+      const clientPlatform = (headers as Record<string, string | undefined>)["x-client-platform"];
+      const clientVersion  = (headers as Record<string, string | undefined>)["x-client-version"];
+      if (clientPlatform === "android") {
+        db.user.update({
+          where: { id: user.userId },
+          data: {
+            lastAndroidVersion: clientVersion ?? "unknown",
+            lastAndroidSeenAt: new Date(),
+          },
+        }).catch(() => {/* non-critical */});
+      }
+
       const dbUser = await db.user.findUnique({
         where: { id: user.userId },
         include: { subscription: true },

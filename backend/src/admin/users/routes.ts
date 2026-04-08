@@ -513,6 +513,10 @@ export const adminUserRoutes = new Elysia({ prefix: "/admin/users" })
             referralCount: user._count.referrals,
             deviceCount: user._count.devices,
             vpnPolicy,
+            lastAndroidVersion: (user as any).lastAndroidVersion ?? null,
+            lastAndroidSeenAt: (user as any).lastAndroidSeenAt
+              ? new Date((user as any).lastAndroidSeenAt).toISOString()
+              : null,
           },
           vpn: {
             totals: {

@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   BarChart2,
+  Bell,
   Brain,
   CreditCard,
   Download,
@@ -15,6 +16,7 @@ import {
   Send,
   Server,
   Shield,
+  Smartphone,
   Tag,
   Users,
   VenetianMask,
@@ -65,6 +67,12 @@ adminNav.splice(adminNav.length - 1, 0, {
   title: "Рассылки",
   url: "/me/admin/mailings",
   icon: Send,
+});
+
+adminNav.splice(adminNav.length - 1, 0, {
+  title: "Android-уведомления",
+  url: "/me/admin/notifications",
+  icon: Smartphone,
 });
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

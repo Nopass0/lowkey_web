@@ -38,6 +38,9 @@ import {
 } from "./admin/blocked-domains/routes";
 import { vpnServerRoutes } from "./servers/routes";
 import { aiRoutes } from "./ai/routes";
+import { appVersionRoutes } from "./app/routes";
+import { notificationRoutes, adminNotificationRoutes } from "./notifications/routes";
+import { mobileVpnRoutes } from "./mobile/routes";
 
 // ─── Background VPN-server heartbeat monitor ─────────────────────────────────
 
@@ -283,6 +286,10 @@ const app = new Elysia()
   .use(blockedDomainsPublicRoutes)
   .use(vpnServerRoutes)
   .use(aiRoutes)
+  .use(appVersionRoutes)
+  .use(notificationRoutes)
+  .use(adminNotificationRoutes)
+  .use(mobileVpnRoutes)
 
   // ─── Start server ─────────────────────────────────────────
   .listen({
