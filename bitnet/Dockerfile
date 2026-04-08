@@ -17,18 +17,16 @@ RUN apt-get update && \
       bash \
       build-essential \
       ca-certificates \
+      clang \
       cmake \
       curl \
       git \
       gnupg \
+      lld \
       python3 \
       python3-pip \
       software-properties-common \
       wget && \
-    bash -c "$(wget -O - https://apt.llvm.org/llvm.sh) 18" && \
-    apt-get install -y --no-install-recommends clang-18 lld-18 && \
-    ln -sf /usr/bin/clang-18 /usr/local/bin/clang && \
-    ln -sf /usr/bin/clang++-18 /usr/local/bin/clang++ && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
