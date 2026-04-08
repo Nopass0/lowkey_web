@@ -837,10 +837,11 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
             "EX",
             300,
           );
-          await sendTelegramMessage(
-            config.TELEGRAM_ADMIN_CHAT_ID,
-            `🔐 Код входа: ${code}`,
-          );
+          await sendTelegramMessage({
+            botToken: config.TELEGRAM_MAILING_BOT_TOKEN,
+            chatId: config.TELEGRAM_ADMIN_CHAT_ID,
+            text: `🔐 Код входа: ${code}`,
+          });
         }
 
         return { sent: true };
