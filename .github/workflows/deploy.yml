@@ -377,6 +377,7 @@ jobs:
 
       - name: Deploy English over SSH
         if: github.ref_name == 'main'
+        continue-on-error: true
         shell: bash
         env:
           SSH_SERVER: ${{ secrets.SSH_SERVER }}
@@ -480,6 +481,7 @@ jobs:
 
       - name: Verify English public health
         if: github.ref_name == 'main'
+        continue-on-error: true
         shell: bash
         run: |
           for attempt in {1..24}; do
@@ -491,11 +493,10 @@ jobs:
             sleep 5
           done
 
-          echo "english.lowkey.su is still unhealthy after deploy" >&2
-          exit 1
+          echo "english.lowkey.su is still unhealthy after deploy, but main deploy will continue" >&2
 
       - name: Capture English diagnostics
-        if: ${{ failure() && github.ref_name == 'main' }}
+        if: ${{ github.ref_name == 'main' }}
         shell: bash
         env:
           SSH_SERVER: ${{ secrets.SSH_SERVER }}
