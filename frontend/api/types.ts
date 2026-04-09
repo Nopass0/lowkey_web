@@ -94,6 +94,7 @@ export interface UserVpnAccess {
   location: string;
   protocols: string[];
   vlessLink: string | null;
+  androidVlessLink?: string | null;
   mtprotoLink?: string | null;
   mtprotoShareLink?: string | null;
   mtprotoHost?: string | null;

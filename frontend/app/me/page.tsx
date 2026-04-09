@@ -88,7 +88,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { devices } = useDevices();
   const { info: refInfo } = useReferralInfo();
-  const [copiedKey, setCopiedKey] = useState<"vless" | "mtproto" | null>(null);
+  const [copiedKey, setCopiedKey] = useState<"vless" | "android-vless" | "mtproto" | null>(null);
 
   useEffect(() => {
     fetchPage(1, 5);
@@ -117,7 +117,10 @@ export default function DashboardPage() {
   const hasVpnAccess = Boolean(
     profile?.vpnAccess?.vlessLink || profile?.vpnAccess?.mtprotoLink,
   );
-  const copyToClipboard = async (value: string, key: "vless" | "mtproto") => {
+  const copyToClipboard = async (
+    value: string,
+    key: "vless" | "android-vless" | "mtproto",
+  ) => {
     await navigator.clipboard.writeText(value);
     setCopiedKey(key);
     window.setTimeout(
@@ -418,6 +421,47 @@ export default function DashboardPage() {
               <div className="rounded-xl border border-border/60 bg-background px-4 py-3 font-mono text-xs leading-6 break-all">
                 {profile.vpnAccess.vlessLink}
               </div>
+              </div>
+            )}
+
+            {profile.vpnAccess.androidVlessLink && (
+              <div className="bg-muted/40 border border-border/50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                      VLESS Android
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Отдельная Android-ссылка без Vision/XUDP, порт 8444.
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="cursor-pointer shadow-none"
+                    onClick={() =>
+                      copyToClipboard(
+                        profile.vpnAccess!.androidVlessLink!,
+                        "android-vless",
+                      )
+                    }
+                  >
+                    {copiedKey === "android-vless" ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Скопировано
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Копировать
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background px-4 py-3 font-mono text-xs leading-6 break-all">
+                  {profile.vpnAccess.androidVlessLink}
+                </div>
               </div>
             )}
 
