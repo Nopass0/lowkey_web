@@ -49,6 +49,7 @@ function buildVlessLink(
   serverIp: string,
   serverHost?: string | null,
   clientPlatform?: string | null,
+  stripPacketEncoding = false,
 ): string | null {
   if (!template) {
     return null;
@@ -87,6 +88,12 @@ function buildVlessLink(
     ) {
       const separator = normalized.includes("?") ? "&" : "?";
       normalized = `${normalized}${separator}packetEncoding=xudp`;
+    }
+    if (stripPacketEncoding) {
+      normalized = normalized
+        .replace(/([?&])packetEncoding=xudp&?/, "$1")
+        .replace(/[?&]$/, "")
+        .replace("?&", "?");
     }
     link = `${normalized}${tag ? `#${tag}` : ""}`;
   }
@@ -270,6 +277,14 @@ export const userRoutes = new Elysia({ prefix: "/user" })
                 vpnServer.ip,
                 vpnServer.hostname ?? null,
                 "android",
+              ),
+              androidCompatVlessLink: buildVlessLink(
+                vpnServer.connectLinkTemplate,
+                dbUser.id,
+                vpnServer.ip,
+                vpnServer.hostname ?? null,
+                "android",
+                true,
               ),
               mtprotoLink: mtprotoAccess?.mtprotoLink ?? null,
               mtprotoShareLink: mtprotoAccess?.mtprotoShareLink ?? null,
