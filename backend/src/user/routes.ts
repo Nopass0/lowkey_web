@@ -48,6 +48,7 @@ function buildVlessLink(
   userId: string,
   serverIp: string,
   serverHost?: string | null,
+  clientPlatform?: string | null,
 ): string | null {
   if (!template) {
     return null;
@@ -62,11 +63,16 @@ function buildVlessLink(
   if (link.includes("vless://")) {
     const [baseUrl, tag] = link.split("#");
     let normalized = baseUrl;
+    const isAndroidClient = clientPlatform === "android";
     if (!normalized.includes("type=")) {
       const separator = normalized.includes("?") ? "&" : "?";
       normalized = `${normalized}${separator}type=tcp`;
     }
+    if (isAndroidClient) {
+      normalized = normalized.replace(/@([^:/?#]+)(:\d+)?/, "@$1:8444");
+    }
     if (
+      !isAndroidClient &&
       normalized.includes("security=reality") &&
       !normalized.includes("flow=")
     ) {
@@ -76,6 +82,7 @@ function buildVlessLink(
       );
     }
     if (
+      !isAndroidClient &&
       normalized.includes("security=reality") &&
       !normalized.includes("packetEncoding=")
     ) {
@@ -256,6 +263,7 @@ export const userRoutes = new Elysia({ prefix: "/user" })
                 dbUser.id,
                 vpnServer.ip,
                 vpnServer.hostname ?? null,
+                clientPlatform ?? null,
               ),
               mtprotoLink: mtprotoAccess?.mtprotoLink ?? null,
               mtprotoShareLink: mtprotoAccess?.mtprotoShareLink ?? null,
