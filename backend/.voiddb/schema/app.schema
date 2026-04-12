@@ -231,7 +231,52 @@ database {
     promoUsed Int @default(0)
     promoDurationCount Int? @default(1)
     promoDurationUnit String? @default("month")
+    // Supported VPN protocols for this plan. Empty = all protocols allowed.
+    allowedProtocols Json[] @default([])
     @@map("subscription_plans")
+  }
+
+  model LowkeyClientRules {
+    id String @id @map("_id")
+    name String
+    enabled Boolean @default(true)
+    // null userId = global rule; set userId for user-specific rule
+    userId String?
+    // Domain pattern to match (supports *.example.com wildcards)
+    domain String?
+    // ip_cidr for IP-based matching
+    ipCidr String?
+    port Int?
+    protocol String?
+    // Action: allow, block, redirect
+    action String @default("allow")
+    redirectTo String?
+    reason String?
+    priority Int @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime
+    createdById String?
+    @@map("client_rules")
+  }
+
+  model LowkeyClientNotifications {
+    id String @id @map("_id")
+    title String
+    message String
+    type String @default("info")
+    // action: none, open_url, switch_tab
+    action String @default("none")
+    actionData String?
+    // Target: all | subscription | user | platform
+    targetType String @default("all")
+    targetValue String?
+    // ids of users who received this
+    deliveredTo Json[]
+    // ids of users who read this
+    readBy Json[]
+    sentAt DateTime @default(now())
+    sentById String?
+    @@map("client_notifications")
   }
 
   model LowkeySubscriptionPrices {

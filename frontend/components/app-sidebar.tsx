@@ -75,6 +75,18 @@ adminNav.splice(adminNav.length - 1, 0, {
   icon: Smartphone,
 });
 
+adminNav.splice(adminNav.length - 1, 0, {
+  title: "Правила клиентов",
+  url: "/me/admin/client-rules",
+  icon: Shield,
+});
+
+adminNav.splice(adminNav.length - 1, 0, {
+  title: "Push-уведомления",
+  url: "/me/admin/push-notifications",
+  icon: Bell,
+});
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth();
   const { profile } = useUser();

@@ -730,6 +730,22 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       }),
     },
   )
+  // ─── GET /auth/autologin-url ───────────────────────────
+  .use(authMiddleware)
+  .get("/autologin-url", async ({ user, query }) => {
+    const code = crypto.randomBytes(12).toString("hex").toUpperCase();
+    await db.user.update({
+      where: { id: user.userId },
+      data: {
+        botLoginCode: code,
+        botLoginCodeExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      },
+    });
+
+    const redirect = query.redirect ?? "/me/billing";
+    const url = `${config.SITE_URL}/auth/bot-autologin/${code}?redirect=${encodeURIComponent(redirect)}`;
+    return { url };
+  })
 
   // ─── POST /auth/register ───────────────────────────────
   .post(

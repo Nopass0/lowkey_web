@@ -652,6 +652,60 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
       }),
     },
   )
+  // GET /servers/client-rules — fetch enabled traffic rules for VPN nodes
+  .get("/client-rules", async ({ headers, set }) => {
+    if (!requireServerSecret(headers as any, set)) return;
+    try {
+      const rules = await db.clientRule.findMany({
+        where: { enabled: true },
+        orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          enabled: true,
+          userId: true,
+          domain: true,
+          ipCidr: true,
+          port: true,
+          protocol: true,
+          action: true,
+          redirectTo: true,
+          reason: true,
+          priority: true,
+        },
+      });
+      return { rules };
+    } catch (err) {
+      set.status = 500;
+      return { message: "Internal server error" };
+    }
+  })
+
+  // GET /servers/latest-release/:platform — latest client release for auto-update
+  .get("/latest-release/:platform", async ({ params, set }) => {
+    try {
+      const release = await db.appRelease.findFirst({
+        where: { platform: params.platform, isLatest: true },
+        select: {
+          id: true,
+          version: true,
+          changelog: true,
+          downloadUrl: true,
+          fileSizeMb: true,
+          createdAt: true,
+        },
+      });
+      if (!release) {
+        set.status = 404;
+        return { message: "No release found" };
+      }
+      return { release };
+    } catch (err) {
+      set.status = 500;
+      return { message: "Internal server error" };
+    }
+  })
+
   .get("/list", async ({ set }) => {
     try {
       const servers = await db.vpnServer.findMany({

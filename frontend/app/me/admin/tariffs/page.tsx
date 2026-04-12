@@ -517,6 +517,46 @@ export default function TariffsAdminPage() {
                   </p>
                 )}
 
+                {/* Allowed Protocols */}
+                <div className="p-5 rounded-2xl bg-muted/30 border border-border/50 space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 pb-3">
+                    Доступные протоколы
+                  </h4>
+                  <p className="text-xs text-muted-foreground">Пусто = все протоколы доступны.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["jopa", "socks", "pimpam", "hysteria2", "antitspu"].map((proto) => {
+                      const allowed: string[] = (editingPlan as any).allowedProtocols ?? [];
+                      const isSelected = allowed.length === 0 || allowed.includes(proto);
+                      return (
+                        <button
+                          key={proto}
+                          type="button"
+                          onClick={() => {
+                            const cur: string[] = (editingPlan as any).allowedProtocols ?? [];
+                            if (cur.length === 0) {
+                              // Start with all except toggled one
+                              const all = ["jopa", "socks", "pimpam", "hysteria2", "antitspu"].filter(p => p !== proto);
+                              setEditingPlan((p) => ({ ...p, allowedProtocols: all } as any));
+                            } else if (cur.includes(proto)) {
+                              const next = cur.filter((p) => p !== proto);
+                              setEditingPlan((p) => ({ ...p, allowedProtocols: next.length ? next : [] } as any));
+                            } else {
+                              setEditingPlan((p) => ({ ...p, allowedProtocols: [...cur, proto] } as any));
+                            }
+                          }}
+                          className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                            isSelected
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-muted text-muted-foreground border-border"
+                          }`}
+                        >
+                          {proto.toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Prices */}
                 <div className="p-5 rounded-2xl bg-muted/30 border border-border/50 space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground border-b border-border/50 pb-3">Цены в месяц (₽)</h4>
