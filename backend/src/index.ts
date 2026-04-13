@@ -43,7 +43,7 @@ import { notificationRoutes, adminNotificationRoutes } from "./notifications/rou
 import { mobileVpnRoutes } from "./mobile/routes";
 import { adminClientRulesRoutes } from "./admin/client-rules/routes";
 import { adminClientNotificationRoutes, clientNotificationRoutes } from "./admin/client-notifications/routes";
-import { clientLogRoutes, adminClientLogRoutes } from "./client-logs/routes";
+import { clientLogRoutes, adminClientLogRoutes, clientDomainStatRoutes } from "./client-logs/routes";
 
 // ─── Background VPN-server heartbeat monitor ─────────────────────────────────
 
@@ -297,6 +297,7 @@ const app = new Elysia()
   .use(adminClientNotificationRoutes)
   .use(clientNotificationRoutes)
   .use(clientLogRoutes)
+  .use(clientDomainStatRoutes)
   .use(adminClientLogRoutes)
 
   // ─── Start server ─────────────────────────────────────────

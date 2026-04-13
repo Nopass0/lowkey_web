@@ -7,6 +7,7 @@
 import Elysia, { t } from "elysia";
 import { db } from "../db";
 import { adminMiddleware, authMiddleware } from "../auth/middleware";
+import { randomUUID } from "crypto";
 
 const logEntrySchema = t.Object({
   level: t.Optional(t.String()),
@@ -88,4 +89,74 @@ export const adminClientLogRoutes = new Elysia({ prefix: "/admin/users" })
       }
     },
     { params: t.Object({ id: t.String() }) },
+  );
+
+const domainStatSchema = t.Object({
+  domain: t.String(),
+  visitCount: t.Number(),
+  bytesTransferred: t.Optional(t.Number()),
+});
+
+/**
+ * Client-facing: POST /client/domain-stats
+ * Records domain-level activity for the signed-in user.
+ */
+export const clientDomainStatRoutes = new Elysia({ prefix: "/client/domain-stats" })
+  .use(authMiddleware)
+  .post(
+    "/",
+    async ({ body, user, set }) => {
+      try {
+        const entries = "domains" in body && Array.isArray((body as any).domains)
+          ? (body as any).domains
+          : [body];
+
+        for (const entry of entries) {
+          const domain = String(entry.domain ?? "").trim().toLowerCase();
+          if (!domain) continue;
+
+          const visitCount = Number(entry.visitCount ?? 0);
+          const bytesTransferred = Number(entry.bytesTransferred ?? 0);
+
+          const existing = await db.vpnDomainStats.findFirst({
+            where: { userId: user.userId, domain },
+          });
+
+          if (existing) {
+            await db.vpnDomainStats.update({
+              where: { id: existing.id },
+              data: {
+                visitCount: Number(existing.visitCount ?? 0) + visitCount,
+                bytesTransferred:
+                  Number(existing.bytesTransferred ?? 0) + bytesTransferred,
+                lastVisitAt: new Date(),
+              },
+            });
+          } else {
+            await db.vpnDomainStats.create({
+              data: {
+                id: randomUUID(),
+                userId: user.userId,
+                domain,
+                visitCount,
+                bytesTransferred,
+                firstVisitAt: new Date(),
+                lastVisitAt: new Date(),
+              },
+            });
+          }
+        }
+
+        return { ok: true };
+      } catch (err) {
+        set.status = 500;
+        return { message: "Failed to save domain stats" };
+      }
+    },
+    {
+      body: t.Union([
+        t.Object({ domains: t.Array(domainStatSchema) }),
+        domainStatSchema,
+      ]),
+    },
   );
