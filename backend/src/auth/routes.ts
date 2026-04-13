@@ -823,6 +823,18 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
   // ─── POST /auth/admin/request-code ─────────────────────
   .post(
+    "/admin/is-login",
+    async ({ body }) => {
+      return { isAdminLogin: body.login === config.ADMIN_LOGIN };
+    },
+    {
+      body: t.Object({
+        login: t.String(),
+      }),
+    },
+  )
+
+  .post(
     "/admin/request-code",
     async ({ body, set }) => {
       try {

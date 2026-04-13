@@ -676,8 +676,10 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
       });
       return { rules };
     } catch (err) {
-      set.status = 500;
-      return { message: "Internal server error" };
+      // Keep VPN nodes alive even if DB schema is temporarily out of sync.
+      // In that case nodes receive an empty ruleset instead of failing refresh loops.
+      console.warn("[ClientRules] fallback to empty ruleset:", err);
+      return { rules: [] };
     }
   })
 
