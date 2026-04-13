@@ -44,6 +44,7 @@ import { mobileVpnRoutes } from "./mobile/routes";
 import { adminClientRulesRoutes } from "./admin/client-rules/routes";
 import { adminClientNotificationRoutes, clientNotificationRoutes } from "./admin/client-notifications/routes";
 import { clientLogRoutes, adminClientLogRoutes, clientDomainStatRoutes } from "./client-logs/routes";
+import { jopaRoutes } from "./jopa/routes";
 
 // ─── Background VPN-server heartbeat monitor ─────────────────────────────────
 
@@ -299,6 +300,7 @@ const app = new Elysia()
   .use(clientLogRoutes)
   .use(clientDomainStatRoutes)
   .use(adminClientLogRoutes)
+  .use(jopaRoutes)
 
   // ─── Start server ─────────────────────────────────────────
   .listen({

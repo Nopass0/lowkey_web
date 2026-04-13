@@ -75,6 +75,15 @@ export const config = {
   /** JWT token expiry for regular users */
   JWT_EXPIRY: process.env.JWT_EXPIRY ?? "30d",
 
+  /** JOPA relay API base URL (e.g. http://89.169.54.87:9109) */
+  JOPA_API_URL: process.env.JOPA_API_URL ?? "http://89.169.54.87:9109",
+
+  /** JOPA relay bootstrap login */
+  JOPA_LOGIN: process.env.JOPA_LOGIN ?? "rtest1",
+
+  /** JOPA relay bootstrap password */
+  JOPA_PASSWORD: process.env.JOPA_PASSWORD ?? "rtest1",
+
   /** Admin login username */
   ADMIN_LOGIN: process.env.ADMIN_LOGIN ?? "nopass",
 
