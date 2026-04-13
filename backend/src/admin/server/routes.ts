@@ -214,13 +214,16 @@ function mergeServerRows(rows: NonNullable<VpnServerRow>[]) {
     if (!isMeaningfulLocation(merged.location) && isMeaningfulLocation(candidate.location)) {
       merged.location = candidate.location;
     }
+    // Union all protocols from every server on this IP
     if (
-      (!Array.isArray(merged.supportedProtocols) ||
-        merged.supportedProtocols.length === 0) &&
       Array.isArray(candidate.supportedProtocols) &&
       candidate.supportedProtocols.length > 0
     ) {
-      merged.supportedProtocols = candidate.supportedProtocols;
+      const existing = Array.isArray(merged.supportedProtocols)
+        ? merged.supportedProtocols
+        : [];
+      const union = Array.from(new Set([...existing, ...candidate.supportedProtocols]));
+      merged.supportedProtocols = union;
     }
     if (merged.serverType !== "hysteria2" && hasText(candidate.serverType)) {
       merged.serverType = candidate.serverType;
@@ -309,6 +312,10 @@ async function getMergedServerList() {
 
   const groups = new Map<string, NonNullable<VpnServerRow>[]>();
   for (const server of servers as NonNullable<VpnServerRow>[]) {
+    // Skip phantom registrations with empty/invalid IP
+    if (!server.ip || !String(server.ip).trim()) {
+      continue;
+    }
     const bucket = groups.get(server.ip);
     if (bucket) {
       bucket.push(server);
