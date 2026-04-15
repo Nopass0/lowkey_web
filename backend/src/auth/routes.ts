@@ -843,21 +843,32 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         // Always return 200 regardless of login validity (security)
         if (login === config.ADMIN_LOGIN) {
           const code = Math.floor(100000 + Math.random() * 900000).toString();
-          await redis.set(
-            `admin:otp:${login}`,
-            JSON.stringify({ code, attempts: 0 }),
-            "EX",
-            300,
-          );
-          await sendTelegramMessage({
-            botToken: config.TELEGRAM_MAILING_BOT_TOKEN,
-            chatId: config.TELEGRAM_ADMIN_CHAT_ID,
-            text: `🔐 Код входа: ${code}`,
-          });
+          try {
+            await redis.set(
+              `admin:otp:${login}`,
+              JSON.stringify({ code, attempts: 0 }),
+              "EX",
+              300,
+            );
+
+            if (config.TELEGRAM_ADMIN_CHAT_ID) {
+              await sendTelegramMessage({
+                botToken: config.TELEGRAM_MAILING_BOT_TOKEN || config.TELEGRAM_BOT_TOKEN,
+                chatId: config.TELEGRAM_ADMIN_CHAT_ID,
+                text: `🔐 Код входа: ${code}`,
+              });
+            } else {
+              console.warn("[ADMIN OTP] TELEGRAM_ADMIN_CHAT_ID is not configured! OTP Code:", code);
+            }
+          } catch (tErr) {
+            console.error("[ADMIN OTP] Failed to send telegram message:", tErr);
+            console.warn("[ADMIN OTP] Fallback OTP Code:", code);
+          }
         }
 
         return { sent: true };
       } catch (err) {
+        console.error("[auth/admin/request-code] Internal error:", err);
         set.status = 500;
         return { message: "Internal server error" };
       }
