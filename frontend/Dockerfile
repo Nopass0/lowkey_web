@@ -14,12 +14,12 @@ ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NODE_ENV=production
 ENV CI=1
 ENV NEXT_DISABLE_ESLINT=1
-ENV NODE_OPTIONS=--max-old-space-size=2048
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 COPY . .
-RUN ./node_modules/.bin/next build --webpack
+RUN ./node_modules/.bin/next build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
