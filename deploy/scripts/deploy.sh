@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -340,12 +340,14 @@ deploy_stack() {
   cd "${ROOT_DIR}"
   local compose_cmd=(docker compose --env-file .env.compose -p "lowkey-${APP_ENV}")
 
-  export DOCKER_BUILDKIT=1
-  export COMPOSE_DOCKER_CLI_BUILD=1
+  export DOCKER_BUILDKIT=0
+  export COMPOSE_DOCKER_CLI_BUILD=0
+  export COMPOSE_PARALLEL_LIMIT=1
 
   # Keep the public site and API deploy independent from optional AI services.
   # BitNet/N8N are expensive and can fail independently without taking prod down.
-  "${compose_cmd[@]}" up -d --build --remove-orphans backend frontend
+  "${compose_cmd[@]}" build --pull backend frontend
+  "${compose_cmd[@]}" up -d --remove-orphans backend frontend
 
   local backend_url="http://127.0.0.1:${BACKEND_BIND_PORT}/"
   local frontend_url="http://127.0.0.1:${FRONTEND_BIND_PORT}/"
@@ -387,3 +389,4 @@ install_nginx_config
 ensure_certificate
 install_nginx_config
 deploy_stack
+

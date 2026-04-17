@@ -1,4 +1,4 @@
-name: Deploy
+﻿name: Deploy
 
 on:
   workflow_dispatch:
@@ -159,11 +159,13 @@ jobs:
             shift
             local attempt=1
             local delay=10
-            while true; do
-              if "$@"; then
+            local exit_code=0
+            while (( attempt <= max_attempts )); do
+              "$@"
+              exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -201,11 +203,13 @@ jobs:
             shift
             local attempt=1
             local delay=10
-            while true; do
-              if "$@"; then
+            local exit_code=0
+            while (( attempt <= max_attempts )); do
+              "$@"
+              exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -302,11 +306,13 @@ jobs:
             shift
             local attempt=1
             local delay=10
-            while true; do
-              if "$@"; then
+            local exit_code=0
+            while (( attempt <= max_attempts )); do
+              "$@"
+              exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -427,11 +433,13 @@ jobs:
             shift
             local attempt=1
             local delay=10
-            while true; do
-              if "$@"; then
+            local exit_code=0
+            while (( attempt <= max_attempts )); do
+              "$@"
+              exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -516,11 +524,13 @@ jobs:
             shift
             local attempt=1
             local delay=10
-            while true; do
-              if "$@"; then
+            local exit_code=0
+            while (( attempt <= max_attempts )); do
+              "$@"
+              exit_code=$?
+              if (( exit_code == 0 )); then
                 return 0
               fi
-              local exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -565,3 +575,4 @@ jobs:
 
           SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o ConnectionAttempts=1 -o ControlMaster=auto -o ControlPersist=600 -o ControlPath=${SSH_CONTROL_PATH} -o LogLevel=ERROR"
           ssh ${SSH_OPTS} -O exit "${SSH_USER}@${SSH_SERVER}" || true
+
