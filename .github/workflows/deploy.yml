@@ -161,11 +161,10 @@ jobs:
             local delay=10
             local exit_code=0
             while (( attempt <= max_attempts )); do
-              "$@"
-              exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -205,11 +204,10 @@ jobs:
             local delay=10
             local exit_code=0
             while (( attempt <= max_attempts )); do
-              "$@"
-              exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -308,11 +306,10 @@ jobs:
             local delay=10
             local exit_code=0
             while (( attempt <= max_attempts )); do
-              "$@"
-              exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -435,11 +432,10 @@ jobs:
             local delay=10
             local exit_code=0
             while (( attempt <= max_attempts )); do
-              "$@"
-              exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -526,11 +522,10 @@ jobs:
             local delay=10
             local exit_code=0
             while (( attempt <= max_attempts )); do
-              "$@"
-              exit_code=$?
-              if (( exit_code == 0 )); then
+              if "$@"; then
                 return 0
               fi
+              exit_code=$?
               if (( attempt >= max_attempts )); then
                 return "${exit_code}"
               fi
@@ -574,5 +569,8 @@ jobs:
           fi
 
           SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o ConnectionAttempts=1 -o ControlMaster=auto -o ControlPersist=600 -o ControlPath=${SSH_CONTROL_PATH} -o LogLevel=ERROR"
+          ssh ${SSH_OPTS} -O check "${SSH_USER}@${SSH_SERVER}" >/dev/null 2>&1 || exit 0
           ssh ${SSH_OPTS} -O exit "${SSH_USER}@${SSH_SERVER}" || true
+
+
 
