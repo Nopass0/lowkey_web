@@ -47,7 +47,9 @@ import (
 	voidorm "github.com/Nopass0/void_go"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/net/proxy"
 
+	"jopa-stack/jopa-server/internal/rules"
 	"jopa-stack/jopa-server/internal/storage"
 	"jopa-stack/jopa-server/internal/subscription"
 )
@@ -55,9 +57,11 @@ import (
 // RelayServer — TCP relay сервер JOPA.
 // Каждое входящее соединение обрабатывается в отдельной горутине.
 type RelayServer struct {
-	addr  string          // адрес для listen (напр. ":9101")
-	store *storage.Store  // VoidDB для сессий, логов, статистики
-	gate  *subscription.Gate // «охранник» подписок
+	addr          string             // адрес для listen (напр. ":9101")
+	store         *storage.Store     // VoidDB для сессий, логов, статистики
+	gate          *subscription.Gate // «охранник» подписок
+	rules         *rules.Engine      // движок правил (блокировка, редиректы)
+	upstreamProxy string             // опциональный SOCKS5 прокси (host:port) для исходящих TCP
 }
 
 // relayOpenReq — структура JSON-рукопожатия от клиента.
@@ -82,12 +86,42 @@ type relayResp struct {
 }
 
 // NewRelayServer создаёт RelayServer.
-func NewRelayServer(addr string, store *storage.Store, gate *subscription.Gate) *RelayServer {
+// upstreamProxy — необязательный SOCKS5-адрес (host:port) для проксирования исходящих TCP.
+// Если пустой — прямое подключение. Используется чтобы relay-сервер мог достучаться
+// до заблокированных в России сервисов (ChatGPT, Instagram, и т.д.).
+func NewRelayServer(addr string, store *storage.Store, gate *subscription.Gate, rules *rules.Engine, upstreamProxy string) *RelayServer {
 	return &RelayServer{
-		addr:  addr,
-		store: store,
-		gate:  gate,
+		addr:          addr,
+		store:         store,
+		gate:          gate,
+		rules:         rules,
+		upstreamProxy: upstreamProxy,
 	}
+}
+
+// dialUpstream устанавливает TCP-соединение к target.
+// Если настроен upstream SOCKS5 прокси — соединяется через него.
+// Это позволяет relay-серверу обходить локальные блокировки (TSPU, РКН) для исходящего трафика.
+func (s *RelayServer) dialUpstream(target string, timeout time.Duration) (net.Conn, error) {
+	if s.upstreamProxy == "" {
+		// Прямое подключение (обычный режим)
+		return net.DialTimeout("tcp", target, timeout)
+	}
+
+	// Подключение через SOCKS5 прокси
+	dialer, err := proxy.SOCKS5("tcp", s.upstreamProxy, nil, &net.Dialer{Timeout: timeout})
+	if err != nil {
+		log.Printf("[JOPA/RELAY] socks5 dialer error proxy=%s err=%v — fallback to direct", s.upstreamProxy, err)
+		return net.DialTimeout("tcp", target, timeout)
+	}
+	conn, err := dialer.Dial("tcp", target)
+	if err != nil {
+		log.Printf("[JOPA/RELAY] socks5 dial failed proxy=%s target=%s err=%v — fallback to direct", s.upstreamProxy, target, err)
+		// Fallback на прямое подключение если прокси недоступен
+		return net.DialTimeout("tcp", target, timeout)
+	}
+	log.Printf("[JOPA/RELAY] connected via socks5 proxy=%s target=%s", s.upstreamProxy, target)
+	return conn, nil
 }
 
 // Run запускает TCP-сервер. Блокирующий метод.
@@ -211,6 +245,20 @@ func (s *RelayServer) handleConn(conn net.Conn) {
 	log.Printf("[JOPA/RELAY] request type=%s login=%s device=%s sub=%s target=%s:%d",
 		req.Type, req.Login, req.DeviceID, req.SubToken, req.TargetHost, req.TargetPort)
 
+	// ── Шаг 5.5: Применяем правила (блокировка, редиректы) ─────────
+	rulesDecision := s.rules.Check(userID, req.TargetHost, req.TargetPort)
+	if rulesDecision.Action == "block" {
+		log.Printf("[JOPA/RELAY] blocked target=%s user=%s", req.TargetHost, userID)
+		writeRelayResp(conn, relayResp{Status: "error", Message: "access to this domain is blocked by admin"})
+		s.logFlow(req, userID, "blocked", 0, "rule block")
+		return
+	}
+	if rulesDecision.Action == "redirect" {
+		log.Printf("[JOPA/RELAY] redirecting %s:%d -> %s:%d", req.TargetHost, req.TargetPort, rulesDecision.TargetHost, rulesDecision.TargetPort)
+		req.TargetHost = rulesDecision.TargetHost
+		req.TargetPort = rulesDecision.TargetPort
+	}
+
 	// ── Шаг 6: Делегируем нужному обработчику ─────────────────────
 	if req.Type == "udp_once" {
 		// Одиночный UDP-запрос (только DNS порт 53).
@@ -219,14 +267,14 @@ func (s *RelayServer) handleConn(conn net.Conn) {
 	}
 	if req.Type == "udp_tunnel" {
 		// Постоянный UDP-туннель (DNS через длинноживущее соединение).
-		s.handleUDPTunnel(conn, req, userID)
+		s.handleUDPTunnel(conn, reader, req, userID)
 		return
 	}
 
 	// ── type="open": прозрачный TCP-туннель ───────────────────────
-	// Подключаемся к целевому хосту.
+	// Подключаемся к целевому хосту (напрямую или через upstream SOCKS5 прокси).
 	target := net.JoinHostPort(req.TargetHost, fmt.Sprintf("%d", req.TargetPort))
-	upstream, err := net.DialTimeout("tcp", target, 8*time.Second)
+	upstream, err := s.dialUpstream(target, 8*time.Second)
 	if err != nil {
 		log.Printf("[JOPA/RELAY] tcp dial failed target=%s err=%v", target, err)
 		s.logFlow(req, userID, "tcp_dial_failed", 0, err.Error())
@@ -279,8 +327,7 @@ func (s *RelayServer) handleConn(conn net.Conn) {
 // Это нужно, т.к. TCP — stream-протокол без границ пакетов,
 // а UDP-пакеты должны доставляться целиком.
 //
-// Используется для UDP-трафика (игры, WebRTC, некоторые DNS-резолверы).
-func (s *RelayServer) handleUDPTunnel(conn net.Conn, req relayOpenReq, userID string) {
+func (s *RelayServer) handleUDPTunnel(conn net.Conn, reader *bufio.Reader, req relayOpenReq, userID string) {
 	target := net.JoinHostPort(req.TargetHost, fmt.Sprintf("%d", req.TargetPort))
 
 	// Диалом UDP на целевой хост.
@@ -308,17 +355,21 @@ func (s *RelayServer) handleUDPTunnel(conn net.Conn, req relayOpenReq, userID st
 		lenBuf := make([]byte, 2)
 		for {
 			// Читаем ровно 2 байта длины.
-			if _, err := io.ReadFull(conn, lenBuf); err != nil {
+			if _, err := io.ReadFull(reader, lenBuf); err != nil {
 				return // соединение закрыто
 			}
+			for i := 0; i < 2; i++ { lenBuf[i] ^= 0x42 }
+            
 			pLen := int(lenBuf[0])<<8 | int(lenBuf[1]) // big-endian uint16
 			if pLen > 65535 {
 				return // некорректный размер — обрываем
 			}
 			payload := make([]byte, pLen)
-			if _, err := io.ReadFull(conn, payload); err != nil {
+			if _, err := io.ReadFull(reader, payload); err != nil {
 				return
 			}
+			for i := 0; i < pLen; i++ { payload[i] ^= 0x42 }
+            
 			if _, err := upstream.Write(payload); err != nil {
 				return // UDP-сокет закрылся
 			}
@@ -335,6 +386,9 @@ func (s *RelayServer) handleUDPTunnel(conn net.Conn, req relayOpenReq, userID st
 		}
 		// Формируем framing: 2 байта big-endian длины + данные.
 		lenBuf := []byte{byte(n >> 8), byte(n & 0xff)}
+		for i := 0; i < 2; i++ { lenBuf[i] ^= 0x42 }
+		for i := 0; i < n; i++ { buf[i] ^= 0x42 }
+        
 		if _, err := conn.Write(lenBuf); err != nil {
 			break
 		}
@@ -622,12 +676,13 @@ type countingReader struct {
 	n *int64 // атомарный счётчик
 }
 
-func (c *countingReader) Read(p []byte) (int, error) {
-	readN, err := c.r.Read(p)
-	if readN > 0 {
-		atomic.AddInt64(c.n, int64(readN))
+func (cr *countingReader) Read(p []byte) (int, error) {
+	n, err := cr.r.Read(p)
+	for i := 0; i < n; i++ {
+		p[i] ^= 0x42
 	}
-	return readN, err
+	atomic.AddInt64(cr.n, int64(n))
+	return n, err
 }
 
 // countingWriter оборачивает io.Writer и атомарно считает записанные байты.
@@ -637,10 +692,12 @@ type countingWriter struct {
 	n *int64 // атомарный счётчик
 }
 
-func (c *countingWriter) Write(p []byte) (int, error) {
-	writtenN, err := c.w.Write(p)
-	if writtenN > 0 {
-		atomic.AddInt64(c.n, int64(writtenN))
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	buf := make([]byte, len(p))
+	for i, b := range p {
+		buf[i] = b ^ 0x42
 	}
-	return writtenN, err
+	n, err := cw.w.Write(buf)
+	atomic.AddInt64(cw.n, int64(n))
+	return n, err
 }

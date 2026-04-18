@@ -19,6 +19,8 @@
 //   JOPA_ADMIN_KEY         — секретный ключ для защищённых /api/v1/admin/* маршрутов
 //   JOPA_GRACE_HOURS       — кол-во часов льготного периода после истечения подписки
 //   JOPA_SUB_CACHE_SECONDS — TTL кэша результатов проверки sub_token в секундах (default 300)
+//   BACKEND_URL            — URL продакшн бэкенда для heartbeat (default "https://lowkey.su/api")
+//   BACKEND_SECRET         — секрет для X-Server-Secret заголовка (default "")
 package config
 
 import (
@@ -52,9 +54,21 @@ type Config struct {
 	// Безопасность
 	AdminKey string // X-Admin-Key заголовок для admin-эндпоинтов
 
+	// Интеграция с бэкендом (heartbeat + регистрация сервера)
+	BackendURL    string // https://lowkey.su/api — продакшн бэкенд
+	BackendSecret string // X-Server-Secret для /servers/register и /servers/heartbeat
+
 	// Тонкая настройка
 	GraceHours      int // льготный период после истечения подписки (часы)
 	SubCacheSeconds int // как долго кэшировать результат проверки sub_token
+
+	// Upstream прокси для обхода блокировок на самом сервере.
+	// Если задан — исходящие TCP-туннели идут через этот SOCKS5-прокси.
+	// Формат: "host:port", например "127.0.0.1:1080" или "proxy.example.com:1080".
+	// По умолчанию пустой — прямое подключение без прокси.
+	// Полезен когда relay-сервер находится в России и не может
+	// напрямую достучаться до заблокированных сервисов (ChatGPT, Instagram и т.д.).
+	UpstreamProxy string
 }
 
 // Load читает конфигурацию из окружения.
@@ -79,6 +93,9 @@ func Load() *Config {
 		AdminKey:        getenv("JOPA_ADMIN_KEY", "jopa-admin-key"),
 		GraceHours:      getenvInt("JOPA_GRACE_HOURS", 24),
 		SubCacheSeconds: getenvInt("JOPA_SUB_CACHE_SECONDS", 300),
+		BackendURL:      getenv("BACKEND_URL", "https://lowkey.su/api"),
+		BackendSecret:   getenv("BACKEND_SECRET", ""),
+		UpstreamProxy:   getenv("JOPA_UPSTREAM_PROXY", ""),
 	}
 }
 

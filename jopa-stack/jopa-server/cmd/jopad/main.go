@@ -24,18 +24,117 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"jopa-stack/jopa-server/internal/api"
 	"jopa-stack/jopa-server/internal/config"
 	"jopa-stack/jopa-server/internal/device"
+	"jopa-stack/jopa-server/internal/rules"
 	"jopa-stack/jopa-server/internal/storage"
 	"jopa-stack/jopa-server/internal/subscription"
 	"jopa-stack/jopa-server/internal/transport"
 )
+
+// serverID хранит ID, присвоенный бэкендом при первой регистрации.
+var serverID string
+
+// relayPort извлекает числовой порт из строки вида ":7443".
+func relayPort(addr string) int {
+	s := strings.TrimPrefix(addr, ":")
+	if p, err := strconv.Atoi(s); err == nil && p > 0 {
+		return p
+	}
+	return 7443
+}
+
+// doRegister регистрирует сервер в бэкенде и запоминает serverId.
+func doRegister(cfg *config.Config) {
+	if cfg.BackendURL == "" {
+		return
+	}
+	payload := map[string]any{
+		"ip":                 cfg.PublicIP,
+		"hostname":           cfg.PublicHostname,
+		"port":               relayPort(cfg.RelayAddr),
+		"supportedProtocols": []string{"jopa", "socks", "pimpam"},
+		"serverType":         "jopa",
+	}
+	data, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", cfg.BackendURL+"/servers/register", bytes.NewReader(data))
+	if err != nil {
+		log.Printf("[Heartbeat] Register request build failed: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.BackendSecret != "" {
+		req.Header.Set("X-Server-Secret", cfg.BackendSecret)
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Heartbeat] Register failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+		if id, ok := result["serverId"].(string); ok && id != "" {
+			serverID = id
+			log.Printf("[Heartbeat] Registered as server %s", id)
+		}
+	}
+}
+
+// doHeartbeat отправляет периодический heartbeat в бэкенд.
+func doHeartbeat(cfg *config.Config) {
+	if cfg.BackendURL == "" || serverID == "" {
+		doRegister(cfg)
+		return
+	}
+	payload := map[string]any{
+		"serverId":          serverID,
+		"currentLoad":       0,
+		"activeConnections": 0,
+	}
+	data, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", cfg.BackendURL+"/servers/heartbeat", bytes.NewReader(data))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.BackendSecret != "" {
+		req.Header.Set("X-Server-Secret", cfg.BackendSecret)
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Heartbeat] Heartbeat failed: %v", err)
+		return
+	}
+	resp.Body.Close()
+}
+
+// startHeartbeatLoop регистрирует сервер при старте и отправляет heartbeat каждые 30 секунд.
+func startHeartbeatLoop(ctx context.Context, cfg *config.Config) {
+	doRegister(cfg)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			doHeartbeat(cfg)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
 
 func main() {
 	// Загружаем конфигурацию из переменных окружения / .env файла.
@@ -63,6 +162,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Движок правил (блокировка, редиректы, Lua).
+	// Периодически обновляет правила из коллекции client_rules.
+	rulesEngine := rules.NewEngine(store)
+	go rulesEngine.Start(ctx)
+
+	// ── Heartbeat loop ─────────────────────────────────────
+	// Регистрирует сервер в бэкенде при старте и периодически
+	// подтверждает что он жив (чтобы monitor не пометил offline).
+	go startHeartbeatLoop(ctx, cfg)
+
 	// ── UDP-сервер (регистрация устройств) ────────────────────────
 	// Слушает на cfg.UDPAddr (по умолчанию :9100).
 	// Каждый пакет обрабатывается в отдельной горутине.
@@ -77,7 +186,7 @@ func main() {
 	// Слушает на cfg.RelayAddr (по умолчанию :9101).
 	// Каждое входящее соединение — отдельная горутина; живёт столько,
 	// сколько активен туннель пользователя.
-	relay := transport.NewRelayServer(cfg.RelayAddr, store, gate)
+	relay := transport.NewRelayServer(cfg.RelayAddr, store, gate, rulesEngine, cfg.UpstreamProxy)
 	go func() {
 		if err := relay.Run(ctx); err != nil {
 			log.Fatalf("[JOPA] Relay server failed: %v", err)
