@@ -15,16 +15,26 @@ jobs:
       DOMAIN: ${{ github.ref_name == 'main' && 'lowkey.su' || 'dev.lowkey.su' }}
       AI_DOMAIN: ${{ github.ref_name == 'main' && 'ai.lowkey.su' || '' }}
       N8N_DOMAIN: ${{ github.ref_name == 'main' && 'n8n.lowkey.su' || 'n8n.dev.lowkey.su' }}
+      # Spider is an independent project on the same host (Go server on :8080).
+      # Previously fronted by Caddy; now nginx fronts it. main only.
+      SPIDER_DOMAIN: ${{ github.ref_name == 'main' && 'spider.lowkey.su' || '' }}
+      SPIDER_UPSTREAM_PORT: '8080'
       BACKEND_BIND_PORT: ${{ github.ref_name == 'main' && '3101' || '3201' }}
       FRONTEND_BIND_PORT: ${{ github.ref_name == 'main' && '3100' || '3200' }}
       N8N_BIND_PORT: ${{ github.ref_name == 'main' && '5678' || '6678' }}
       BITNET_BIND_PORT: ${{ github.ref_name == 'main' && '8080' || '9080' }}
       NEXT_PUBLIC_API_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su/api' || 'https://dev.lowkey.su/api' }}
       NEXT_PUBLIC_SITE_URL: ${{ github.ref_name == 'main' && 'https://lowkey.su' || 'https://dev.lowkey.su' }}
-      VOIDDB_URL: https://db.lowkey.su
+      # VoidDB runs on the host as a systemd service on :7700; nginx proxies
+      # db.lowkey.su (HTTP, intra-host) -> 127.0.0.1:7700. Backend reaches it
+      # via http://db.lowkey.su (NOT https — no public TLS needed for intra-host).
+      VOIDDB_DOMAIN: ${{ github.ref_name == 'main' && 'db.lowkey.su' || 'db.dev.lowkey.su' }}
+      VOIDDB_URL: ${{ github.ref_name == 'main' && 'http://db.lowkey.su' || 'http://db.dev.lowkey.su' }}
       VOIDDB_USERNAME: admin
       VOIDDB_PASSWORD: ${{ secrets.VOIDDB_PASSWORD }}
-      VOIDDB_TOKEN: ${{ secrets.VOIDDB_TOKEN }}
+      # VOIDDB_TOKEN left empty: the token is JWT-bound to VOIDDB_JWT_SECRET on
+      # the VoidDB host. If absent/invalid, the ORM falls back to username+password.
+      VOIDDB_TOKEN: ''
       LEGACY_DATABASE_URL: ${{ github.ref_name == 'main' && secrets.DATABASE_URL || secrets.DEV_DATABASE_URL }}
       LEGACY_REDIS_URL: ${{ secrets.REDIS_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -52,6 +62,7 @@ jobs:
       BITNET_CTX_SIZE: '4096'
       BITNET_TEMPERATURE: '0.7'
       BITNET_N_PREDICT: '1024'
+      NGINX_HTTPS_LISTEN: '0.0.0.0:443'
       GENERIC_TIMEZONE: Asia/Yekaterinburg
       YOKASSA_SHOP_ID: ${{ secrets.YOKASSA_SHOP_ID }}
       YOKASSA_SECRET: ${{ secrets.YOKASSA_SECRET }}
@@ -250,6 +261,8 @@ jobs:
           DOMAIN: ${{ env.DOMAIN }}
           AI_DOMAIN: ${{ env.AI_DOMAIN }}
           N8N_DOMAIN: ${{ env.N8N_DOMAIN }}
+          SPIDER_DOMAIN: ${{ env.SPIDER_DOMAIN }}
+          SPIDER_UPSTREAM_PORT: ${{ env.SPIDER_UPSTREAM_PORT }}
           BACKEND_BIND_PORT: ${{ env.BACKEND_BIND_PORT }}
           FRONTEND_BIND_PORT: ${{ env.FRONTEND_BIND_PORT }}
           N8N_BIND_PORT: ${{ env.N8N_BIND_PORT }}
@@ -258,6 +271,7 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ env.NEXT_PUBLIC_SITE_URL }}
           REMOTE_BASE: ${{ env.REMOTE_BASE }}
           LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
+          VOIDDB_DOMAIN: ${{ env.VOIDDB_DOMAIN }}
           VOIDDB_URL: ${{ env.VOIDDB_URL }}
           VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
           VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
@@ -288,6 +302,7 @@ jobs:
           BITNET_CTX_SIZE: ${{ env.BITNET_CTX_SIZE }}
           BITNET_TEMPERATURE: ${{ env.BITNET_TEMPERATURE }}
           BITNET_N_PREDICT: ${{ env.BITNET_N_PREDICT }}
+          NGINX_HTTPS_LISTEN: ${{ env.NGINX_HTTPS_LISTEN }}
           GENERIC_TIMEZONE: ${{ env.GENERIC_TIMEZONE }}
           N8N_ENCRYPTION_KEY: ${{ env.N8N_ENCRYPTION_KEY }}
           N8N_BASIC_AUTH_ACTIVE: ${{ env.N8N_BASIC_AUTH_ACTIVE }}
@@ -334,6 +349,8 @@ jobs:
              DOMAIN='${DOMAIN}' \
              AI_DOMAIN='${AI_DOMAIN}' \
              N8N_DOMAIN='${N8N_DOMAIN}' \
+             SPIDER_DOMAIN='${SPIDER_DOMAIN}' \
+             SPIDER_UPSTREAM_PORT='${SPIDER_UPSTREAM_PORT}' \
              BACKEND_BIND_PORT='${BACKEND_BIND_PORT}' \
              FRONTEND_BIND_PORT='${FRONTEND_BIND_PORT}' \
              N8N_BIND_PORT='${N8N_BIND_PORT}' \
@@ -341,6 +358,7 @@ jobs:
              NEXT_PUBLIC_API_URL='${NEXT_PUBLIC_API_URL}' \
              NEXT_PUBLIC_SITE_URL='${NEXT_PUBLIC_SITE_URL}' \
              LETSENCRYPT_EMAIL='${LETSENCRYPT_EMAIL}' \
+             VOIDDB_DOMAIN='${VOIDDB_DOMAIN}' \
              VOIDDB_URL='${VOIDDB_URL}' \
              VOIDDB_USERNAME='${VOIDDB_USERNAME}' \
              VOIDDB_PASSWORD='${VOIDDB_PASSWORD}' \
@@ -371,6 +389,7 @@ jobs:
              BITNET_CTX_SIZE='${BITNET_CTX_SIZE}' \
              BITNET_TEMPERATURE='${BITNET_TEMPERATURE}' \
              BITNET_N_PREDICT='${BITNET_N_PREDICT}' \
+             NGINX_HTTPS_LISTEN='${NGINX_HTTPS_LISTEN}' \
              GENERIC_TIMEZONE='${GENERIC_TIMEZONE}' \
              N8N_ENCRYPTION_KEY='${N8N_ENCRYPTION_KEY}' \
              N8N_BASIC_AUTH_ACTIVE='${N8N_BASIC_AUTH_ACTIVE}' \
@@ -382,178 +401,6 @@ jobs:
              YOKASSA_TEST_SECRET='${YOKASSA_TEST_SECRET}' \
              SITE_URL='${SITE_URL}' \
              ./deploy/scripts/deploy.sh"
-
-      - name: Deploy English over SSH
-        if: github.ref_name == 'main'
-        continue-on-error: true
-        shell: bash
-        env:
-          SSH_SERVER: ${{ secrets.SSH_SERVER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
-          SSH_CONTROL_PATH: ${{ env.SSH_CONTROL_PATH }}
-          REMOTE_BASE: ${{ env.REMOTE_BASE }}
-          APP_ENV: main
-          DOMAIN: english.lowkey.su
-          LETSENCRYPT_EMAIL: ${{ env.LETSENCRYPT_EMAIL }}
-          BACKEND_BIND_PORT: '3302'
-          FRONTEND_BIND_PORT: '3303'
-          NEXT_PUBLIC_SITE_URL: https://english.lowkey.su
-          NEXT_PUBLIC_API_URL: /api
-          BACKEND_INTERNAL_URL: http://backend:3002
-          CORS_ORIGINS: https://english.lowkey.su
-          VOIDDB_URL: ${{ env.VOIDDB_URL }}
-          VOIDDB_DATABASE: english
-          VOIDDB_USERNAME: ${{ env.VOIDDB_USERNAME }}
-          VOIDDB_PASSWORD: ${{ env.VOIDDB_PASSWORD }}
-          VOIDDB_TOKEN: ''
-          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: lowkey_english_bot
-          JWT_SECRET: ${{ env.JWT_SECRET }}
-          TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_WEBHOOK_URL: https://english.lowkey.su
-          YOKASSA_SHOP_ID: ${{ env.YOKASSA_SHOP_ID }}
-          YOKASSA_SECRET: ${{ env.YOKASSA_SECRET }}
-          YOKASSA_TEST_SHOP_ID: ${{ env.YOKASSA_TEST_SHOP_ID }}
-          YOKASSA_TEST_SECRET: ${{ env.YOKASSA_TEST_SECRET }}
-          YOKASSA_TEST_MODE: 'true'
-          OPENROUTER_URL: https://openrouter.ai/api/v1
-          OPENROUTER_API_KEY: ${{ env.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ env.OPENROUTER_DEFAULT_MODEL }}
-          OPENROUTER_SITE_URL: https://english.lowkey.su
-          OPENROUTER_SITE_NAME: LowKey English
-          OPENROUTER_TEMPERATURE: '0.7'
-          OPENROUTER_MAX_TOKENS: '2048'
-        run: |
-          retry() {
-            local max_attempts="$1"
-            shift
-            local attempt=1
-            local delay=10
-            local exit_code=0
-            while (( attempt <= max_attempts )); do
-              if "$@"; then
-                return 0
-              fi
-              exit_code=$?
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-              echo "Attempt ${attempt}/${max_attempts} failed with exit code ${exit_code}. Retrying in ${delay}s..."
-              sleep "${delay}"
-              attempt=$((attempt + 1))
-              delay=$((delay * 2))
-              if (( delay > 60 )); then
-                delay=60
-              fi
-            done
-          }
-
-          SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ConnectionAttempts=1 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1 -o ControlMaster=auto -o ControlPersist=600 -o ControlPath=${SSH_CONTROL_PATH} -o LogLevel=ERROR"
-          retry 4 sshpass -p "${SSH_PASSWORD}" ssh \
-            ${SSH_OPTS} \
-            "${SSH_USER}@${SSH_SERVER}" \
-            "cd '${REMOTE_BASE}/english' && \
-             chmod +x deploy/scripts/provision-server.sh && \
-             chmod +x deploy/scripts/deploy.sh && \
-             APP_ENV='${APP_ENV}' \
-             DOMAIN='${DOMAIN}' \
-             LETSENCRYPT_EMAIL='${LETSENCRYPT_EMAIL}' \
-             BACKEND_BIND_PORT='${BACKEND_BIND_PORT}' \
-             FRONTEND_BIND_PORT='${FRONTEND_BIND_PORT}' \
-             NEXT_PUBLIC_SITE_URL='${NEXT_PUBLIC_SITE_URL}' \
-             NEXT_PUBLIC_API_URL='${NEXT_PUBLIC_API_URL}' \
-             BACKEND_INTERNAL_URL='${BACKEND_INTERNAL_URL}' \
-             CORS_ORIGINS='${CORS_ORIGINS}' \
-             VOIDDB_URL='${VOIDDB_URL}' \
-             VOIDDB_DATABASE='${VOIDDB_DATABASE}' \
-             VOIDDB_USERNAME='${VOIDDB_USERNAME}' \
-             VOIDDB_PASSWORD='${VOIDDB_PASSWORD}' \
-             VOIDDB_TOKEN='${VOIDDB_TOKEN}' \
-             NEXT_PUBLIC_TELEGRAM_BOT_USERNAME='${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}' \
-             JWT_SECRET='${JWT_SECRET}' \
-             TELEGRAM_BOT_TOKEN='${TELEGRAM_BOT_TOKEN}' \
-             TELEGRAM_WEBHOOK_URL='${TELEGRAM_WEBHOOK_URL}' \
-             YOKASSA_SHOP_ID='${YOKASSA_SHOP_ID}' \
-             YOKASSA_SECRET='${YOKASSA_SECRET}' \
-             YOKASSA_TEST_SHOP_ID='${YOKASSA_TEST_SHOP_ID}' \
-             YOKASSA_TEST_SECRET='${YOKASSA_TEST_SECRET}' \
-             YOKASSA_TEST_MODE='${YOKASSA_TEST_MODE}' \
-             OPENROUTER_URL='${OPENROUTER_URL}' \
-             OPENROUTER_API_KEY='${OPENROUTER_API_KEY}' \
-             OPENROUTER_MODEL='${OPENROUTER_MODEL}' \
-             OPENROUTER_SITE_URL='${OPENROUTER_SITE_URL}' \
-             OPENROUTER_SITE_NAME='${OPENROUTER_SITE_NAME}' \
-             OPENROUTER_TEMPERATURE='${OPENROUTER_TEMPERATURE}' \
-             OPENROUTER_MAX_TOKENS='${OPENROUTER_MAX_TOKENS}' \
-             ./deploy/scripts/deploy.sh"
-
-      - name: Verify English public health
-        if: github.ref_name == 'main'
-        continue-on-error: true
-        shell: bash
-        run: |
-          for attempt in {1..24}; do
-            if curl -fsS https://english.lowkey.su/api/health >/dev/null 2>&1 &&
-               curl -fsS https://english.lowkey.su/ >/dev/null 2>&1; then
-              exit 0
-            fi
-            echo "English public health check attempt ${attempt}/24 failed, retrying in 5s..."
-            sleep 5
-          done
-
-          echo "english.lowkey.su is still unhealthy after deploy, but main deploy will continue" >&2
-
-      - name: Capture English diagnostics
-        if: ${{ github.ref_name == 'main' }}
-        shell: bash
-        env:
-          SSH_SERVER: ${{ secrets.SSH_SERVER }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
-          SSH_CONTROL_PATH: ${{ env.SSH_CONTROL_PATH }}
-          REMOTE_BASE: ${{ env.REMOTE_BASE }}
-        run: |
-          retry() {
-            local max_attempts="$1"
-            shift
-            local attempt=1
-            local delay=10
-            local exit_code=0
-            while (( attempt <= max_attempts )); do
-              if "$@"; then
-                return 0
-              fi
-              exit_code=$?
-              if (( attempt >= max_attempts )); then
-                return "${exit_code}"
-              fi
-              echo "Attempt ${attempt}/${max_attempts} failed with exit code ${exit_code}. Retrying in ${delay}s..."
-              sleep "${delay}"
-              attempt=$((attempt + 1))
-              delay=$((delay * 2))
-              if (( delay > 60 )); then
-                delay=60
-              fi
-            done
-          }
-
-          SSH_OPTS="-p ${SSH_PORT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ConnectionAttempts=1 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes -o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1 -o ControlMaster=auto -o ControlPersist=600 -o ControlPath=${SSH_CONTROL_PATH} -o LogLevel=ERROR"
-          retry 2 sshpass -p "${SSH_PASSWORD}" ssh \
-            ${SSH_OPTS} \
-            "${SSH_USER}@${SSH_SERVER}" \
-            "set -x && \
-             cd '${REMOTE_BASE}/english' && \
-             docker compose --env-file .env.compose ps || true && \
-             docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' | grep 'english-' || true && \
-             curl -sv http://127.0.0.1:3302/health || true && \
-             curl -sv http://127.0.0.1:3303/ -o /tmp/english_frontend_body.txt || true && \
-             tail -n 40 /tmp/english_frontend_body.txt || true && \
-             ss -lntp | grep -E ':3302|:3303' || true && \
-             nginx -T 2>/dev/null | sed -n '/server_name english.lowkey.su/,/}/p' || true && \
-             docker logs --tail=200 english-backend || true && \
-             docker logs --tail=200 english-frontend || true"
 
       - name: Close SSH master connection
         if: always()
