@@ -57,7 +57,8 @@ function buildEnvFile(server: DeployServerInput, mtproto: MtprotoSettings) {
     ["SERVER_HOSTNAME", server.hostname],
     ["LISTEN_ADDR", ":443"],
     ["HTTP_ADDR", ":8080"],
-    ["XRAY_PORT", "443"],
+    ["VLESS_ENABLED", "true"],
+    ["VLESS_LISTEN", ":443"],
     ["PM2_APP_NAME", server.pm2ProcessName],
   ]);
 

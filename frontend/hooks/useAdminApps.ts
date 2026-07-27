@@ -146,6 +146,7 @@ export function useAdminApps() {
           changelog,
           downloadUrl: "#",
           fileSizeMb: Math.round((file.size / 1024 / 1024) * 10) / 10,
+          sha256: "",
           downloadCount: 0,
           isLatest: false,
           createdAt: new Date().toISOString(),

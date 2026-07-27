@@ -10,7 +10,7 @@ Write-Host "  ============================" -ForegroundColor DarkGray
 Write-Host ""
 
 if (-not (Test-Path (Join-Path $backendDir ".env"))) {
-    Write-Host "  ! Внимание: backend/.env не найден. Рекомендуется сначала выполнить .\start.ps1" -ForegroundColor Yellow
+    Write-Host "  ! Внимание: backend/.env не найден. Для полного dev-стека с локальной БД запустите .\dev.ps1" -ForegroundColor Yellow
 }
 
 Write-Host "  Очистка зависших процессов на портах 3000 и 3001..." -ForegroundColor DarkGray

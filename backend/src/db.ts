@@ -72,6 +72,7 @@ export interface PrismaLikeClient {
   pushNotification: PrismaDelegate;
   clientNotification: PrismaDelegate;
   clientLog: PrismaDelegate;
+  clientRule: PrismaDelegate;
   $disconnect(): Promise<void>;
   $transaction<T>(callback: (tx: PrismaLikeClient) => Promise<T>): Promise<T>;
   $transaction<T>(operations: Promise<T>[]): Promise<T[]>;
@@ -113,7 +114,8 @@ type ModelName =
   | "mtprotoSettings"
   | "pushNotification"
   | "clientNotification"
-  | "clientLog";
+  | "clientLog"
+  | "clientRule";
 
 type RelationConfig = {
   model: ModelName;
@@ -268,6 +270,7 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
       "isActive",
       "isTelegramPlan",
       "telegramProxyEnabled",
+      "allowedProtocols",
       "sortOrder",
       "promoActive",
       "promoPrice",
@@ -406,7 +409,7 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
   },
   appRelease: {
     collection: "app_releases",
-    fields: ["id", "platform", "version", "changelog", "downloadUrl", "fileSizeMb", "downloadCount", "isLatest", "createdAt"],
+    fields: ["id", "platform", "version", "changelog", "downloadUrl", "fileSizeMb", "sha256", "downloadCount", "isLatest", "createdAt"],
     dateFields: ["createdAt"],
   },
   supportTicket: {
@@ -664,6 +667,16 @@ const MODEL_CONFIG: Record<ModelName, ModelConfig> = {
     fields: ["id", "userId", "level", "category", "message", "data", "createdAt"],
     dateFields: ["createdAt"],
   },
+  clientRule: {
+    collection: "client_rules",
+    fields: [
+      "id", "name", "enabled", "userId", "domain", "ipCidr", "port",
+      "protocol", "action", "redirectTo", "reason", "priority",
+      "htmlContent", "upstreamProxy", "upstreamDevice",
+      "createdAt", "updatedAt", "createdById",
+    ],
+    dateFields: ["createdAt", "updatedAt"],
+  },
 };
 
 const UPDATE_TIMESTAMP_MODELS = new Set<ModelName>([
@@ -680,6 +693,7 @@ const UPDATE_TIMESTAMP_MODELS = new Set<ModelName>([
   "aiConversation",
   "mtprotoSettings",
   "vpnBlockedDomain",
+  "clientRule",
 ]);
 
 function isPlainObject(value: unknown): value is AnyRecord {
@@ -1062,6 +1076,15 @@ function withCreateDefaults(model: ModelName, data: AnyRecord): AnyRecord {
       Object.assign(defaults, {
         kind: "upload",
         createdAt: now,
+      });
+      break;
+    case "clientRule":
+      Object.assign(defaults, {
+        enabled: true,
+        action: "block",
+        priority: 0,
+        createdAt: now,
+        updatedAt: now,
       });
       break;
     default:
@@ -1946,6 +1969,7 @@ class VoidPrismaClient implements PrismaLikeClient {
   pushNotification = new VoidPrismaDelegate("pushNotification");
   clientNotification = new VoidPrismaDelegate("clientNotification");
   clientLog = new VoidPrismaDelegate("clientLog");
+  clientRule = new VoidPrismaDelegate("clientRule");
 
   async $disconnect() {
     return;

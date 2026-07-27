@@ -70,13 +70,13 @@ function normalizeMtprotoSecret(value?: string | null) {
   }
 
   const secret = normalized.toLowerCase();
-  if (!/^(?:[0-9a-f]{32}|(?:dd|ee)[0-9a-f]{32})$/.test(secret)) {
+  if (!/^(?:[0-9a-f]{32}|dd[0-9a-f]{32}|ee[0-9a-f]{32,})$/.test(secret)) {
     throw new Error(
-      "MTProto secret must contain 32 hex characters; dd/ee prefix is optional",
+      "MTProto secret must contain 32 hex characters; dd prefix or ee TLS secret is optional",
     );
   }
 
-  return /^(dd|ee)/.test(secret) ? secret.slice(2) : secret;
+  return /^dd[0-9a-f]{32}$/.test(secret) ? secret.slice(2) : secret;
 }
 
 function generateMtprotoSecret() {
@@ -88,7 +88,7 @@ function serializeMtprotoSecret(value?: string | null) {
   if (!secret) {
     return null;
   }
-  return /^(dd|ee)[0-9a-f]{32}$/.test(secret) ? secret.slice(2) : secret;
+  return /^dd[0-9a-f]{32}$/.test(secret) ? secret.slice(2) : secret;
 }
 
 function toPublishedMtprotoSecret(value?: string | null) {
@@ -96,7 +96,7 @@ function toPublishedMtprotoSecret(value?: string | null) {
   if (!secret) {
     return null;
   }
-  if (/^(dd|ee)[0-9a-f]{32}$/.test(secret)) {
+  if (/^dd[0-9a-f]{32}$/.test(secret) || /^ee[0-9a-f]{32,}$/.test(secret)) {
     return secret;
   }
   if (/^[0-9a-f]{32}$/.test(secret)) {
@@ -118,6 +118,10 @@ function normalizeConnectLinkTemplate(value?: string | null) {
       const separator = normalized.includes("?") ? "&" : "?";
       normalized = `${normalized}${separator}type=tcp`;
     }
+    normalized = normalized
+      .replace(/([?&])alpn=[^&#]*&?/, "$1")
+      .replace(/[?&]$/, "")
+      .replace("?&", "?");
     if (
       normalized.includes("security=reality") &&
       !normalized.includes("flow=")
@@ -397,6 +401,68 @@ async function runServerDeployment(serverId: string) {
   }
 }
 
+async function getMtprotoSettingsResponse() {
+  const settings = await db.mtprotoSettings.findFirst({});
+  if (!settings) {
+    return {
+      id: "global",
+      enabled: false,
+      port: 443,
+      secret: null,
+      adTag: null,
+      channelUsername: null,
+      botUsername: null,
+      addChannelOnConnect: false,
+    };
+  }
+
+  return {
+    ...settings,
+    secret: serializeMtprotoSecret(settings.secret),
+  };
+}
+
+async function saveMtprotoSettings(body: {
+  enabled?: boolean;
+  port?: number;
+  secret?: string | null;
+  adTag?: string | null;
+  channelUsername?: string | null;
+  botUsername?: string | null;
+  addChannelOnConnect?: boolean;
+}) {
+  const normalizedPayload = {
+    ...body,
+    port:
+      typeof body.port === "number" && Number.isFinite(body.port)
+        ? Math.max(1, Math.trunc(body.port))
+        : body.port,
+    secret: toPublishedMtprotoSecret(normalizeMtprotoSecret(body.secret)),
+    adTag: normalizeMtprotoAdTag(body.adTag),
+    channelUsername: normalizeTelegramUsername(body.channelUsername),
+    botUsername: normalizeTelegramUsername(body.botUsername),
+  };
+
+  const existing = await db.mtprotoSettings.findFirst({});
+  if (normalizedPayload.enabled && !normalizedPayload.secret && !existing?.secret) {
+    normalizedPayload.secret = generateMtprotoSecret();
+  }
+
+  const saved = existing
+    ? await db.mtprotoSettings.update({
+        where: { id: existing.id },
+        data: normalizedPayload,
+      })
+    : await db.mtprotoSettings.create({
+        data: { id: "global", ...normalizedPayload },
+      });
+
+  return {
+    ...saved,
+    secret: serializeMtprotoSecret(saved.secret),
+  };
+}
+
 export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
   .use(adminMiddleware)
   .get("/list", async () => {
@@ -495,6 +561,44 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
         sshPassword: t.String(),
         pm2ProcessName: t.Optional(t.String()),
         connectLinkTemplate: t.Optional(t.Nullable(t.String())),
+      }),
+    },
+  )
+  .get("/mtproto", async ({ set }) => {
+    try {
+      return await getMtprotoSettingsResponse();
+    } catch (error) {
+      console.error("[AdminServerMtprotoGet] error:", error);
+      set.status = 500;
+      return { message: "Internal server error" };
+    }
+  })
+  .patch(
+    "/mtproto",
+    async ({ body, set }) => {
+      try {
+        return await saveMtprotoSettings(body);
+      } catch (error) {
+        console.error("[AdminServerMtprotoPatch] error:", error);
+        set.status =
+          error instanceof Error && error.message.startsWith("MTProto")
+            ? 400
+            : 500;
+        return {
+          message:
+            error instanceof Error ? error.message : "Internal server error",
+        };
+      }
+    },
+    {
+      body: t.Object({
+        enabled: t.Optional(t.Boolean()),
+        port: t.Optional(t.Number()),
+        secret: t.Optional(t.Nullable(t.String())),
+        adTag: t.Optional(t.Nullable(t.String())),
+        channelUsername: t.Optional(t.Nullable(t.String())),
+        botUsername: t.Optional(t.Nullable(t.String())),
+        addChannelOnConnect: t.Optional(t.Boolean()),
       }),
     },
   )
@@ -632,87 +736,6 @@ export const adminServerRoutes = new Elysia({ prefix: "/admin/server" })
       return { message: "Internal server error" };
     }
   })
-  .get("/mtproto", async ({ set }) => {
-    try {
-      const settings = await db.mtprotoSettings.findFirst({});
-      if (!settings) {
-        return {
-          id: "global",
-          enabled: false,
-          port: 8443,
-          secret: null,
-          adTag: null,
-          channelUsername: null,
-          botUsername: null,
-          addChannelOnConnect: false,
-        };
-      }
-
-      return {
-        ...settings,
-        secret: serializeMtprotoSecret(settings.secret),
-      };
-    } catch (error) {
-      console.error("[AdminServerMtprotoGet] error:", error);
-      set.status = 500;
-      return { message: "Internal server error" };
-    }
-  })
-  .patch(
-    "/mtproto",
-    async ({ body, set }) => {
-      try {
-        const normalizedPayload = {
-          ...body,
-          port:
-            typeof body.port === "number" && Number.isFinite(body.port)
-              ? Math.max(1, Math.trunc(body.port))
-              : body.port,
-          secret: toPublishedMtprotoSecret(normalizeMtprotoSecret(body.secret)),
-          adTag: normalizeMtprotoAdTag(body.adTag),
-          channelUsername: normalizeTelegramUsername(body.channelUsername),
-          botUsername: normalizeTelegramUsername(body.botUsername),
-        };
-
-        const existing = await db.mtprotoSettings.findFirst({});
-        if (normalizedPayload.enabled && !normalizedPayload.secret && !existing?.secret) {
-          normalizedPayload.secret = generateMtprotoSecret();
-        }
-
-        if (existing) {
-          return await db.mtprotoSettings.update({
-            where: { id: "global" },
-            data: normalizedPayload,
-          });
-        }
-
-        return await db.mtprotoSettings.create({
-          data: { id: "global", ...normalizedPayload },
-        });
-      } catch (error) {
-        console.error("[AdminServerMtprotoPatch] error:", error);
-        set.status =
-          error instanceof Error && error.message.startsWith("MTProto")
-            ? 400
-            : 500;
-        return {
-          message:
-            error instanceof Error ? error.message : "Internal server error",
-        };
-      }
-    },
-    {
-      body: t.Object({
-        enabled: t.Optional(t.Boolean()),
-        port: t.Optional(t.Number()),
-        secret: t.Optional(t.Nullable(t.String())),
-        adTag: t.Optional(t.Nullable(t.String())),
-        channelUsername: t.Optional(t.Nullable(t.String())),
-        botUsername: t.Optional(t.Nullable(t.String())),
-        addChannelOnConnect: t.Optional(t.Boolean()),
-      }),
-    },
-  )
   .delete("/:id", async ({ params, set }) => {
     try {
       const server = await getServerOrNull(params.id, true);

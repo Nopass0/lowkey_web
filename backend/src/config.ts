@@ -84,6 +84,9 @@ export const config = {
   /** JOPA relay bootstrap password */
   JOPA_PASSWORD: process.env.JOPA_PASSWORD ?? "rtest1",
 
+  /** JOPA server admin key (X-Admin-Key header) */
+  JOPA_ADMIN_KEY: process.env.JOPA_ADMIN_KEY ?? "JOPA_ADMIN_2026",
+
   /** Admin login username */
   ADMIN_LOGIN: process.env.ADMIN_LOGIN ?? "nopass",
 

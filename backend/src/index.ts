@@ -17,6 +17,7 @@ import { paymentRoutes } from "./payments/routes";
 import { yokassaPaymentRoutes, yokassaWebhookRoute } from "./payments/yokassa-routes";
 import { processAutoRenewals } from "./payments/yokassa";
 import { subscriptionRoutes } from "./subscriptions/routes";
+import { subscribeLinkRoutes } from "./subscriptions/subscribe-link";
 import { deviceRoutes } from "./devices/routes";
 import { promoRoutes } from "./promo/routes";
 import { referralRoutes } from "./referral/routes";
@@ -79,7 +80,7 @@ function startServerMonitor(): void {
   }, INTERVAL_MS);
 
   console.log(
-    "[Monitor] VPN server heartbeat monitor started (2-min interval).",
+    "[Monitor] VPN server heartbeat monitor started (1-min interval).",
   );
 }
 
@@ -185,6 +186,12 @@ function startVpnSessionCleanupWorker(): void {
   console.log("[VpnCleanup] Started.");
 }
 
+const maxRequestBodySize = (() => {
+  const mb = Number(process.env.MAX_REQUEST_BODY_MB ?? "2048");
+  if (!Number.isFinite(mb) || mb <= 0) return 2 * 1024 * 1024 * 1024;
+  return Math.floor(mb * 1024 * 1024);
+})();
+
 /**
  * Main Elysia application instance.
  * Configured with CORS, Swagger docs, error handling, and all route modules.
@@ -267,8 +274,12 @@ const app = new Elysia()
   })
 
   // ─── Route modules ───────────────────────────────────────
+  .use(adminClientRulesRoutes)
   .use(authRoutes)
   .use(userRoutes)
+  // Public subscription endpoint (no JWT; token=user UUID). Registered before
+  // other /api routes so it's reachable at /api/subscribe-link.
+  .use(subscribeLinkRoutes)
   .use(paymentRoutes)
   .use(yokassaPaymentRoutes)
   .use(yokassaWebhookRoute)
@@ -294,7 +305,6 @@ const app = new Elysia()
   .use(notificationRoutes)
   .use(adminNotificationRoutes)
   .use(mobileVpnRoutes)
-  .use(adminClientRulesRoutes)
   .use(adminClientNotificationRoutes)
   .use(clientNotificationRoutes)
   .use(clientLogRoutes)
@@ -306,10 +316,14 @@ const app = new Elysia()
   .listen({
     port: config.PORT,
     hostname: "0.0.0.0",
+    maxRequestBodySize,
   });
 
 console.log(`🚀 lowkey VPN API running at http://localhost:${config.PORT}`);
 console.log(`📚 Swagger docs at http://localhost:${config.PORT}/swagger`);
+console.log(
+  `[API] maxRequestBodySize=${Math.floor(maxRequestBodySize / (1024 * 1024))}MB`,
+);
 
 // Start background VPN-server offline detector
 startServerMonitor();

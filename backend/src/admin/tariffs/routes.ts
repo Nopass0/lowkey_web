@@ -9,6 +9,53 @@ import { db } from "../../db";
 import { adminMiddleware } from "../../auth/middleware";
 import { config } from "../../config";
 
+async function getOrCreateYokassaSettings() {
+  const existing = await db.yokassaSettings.findFirst({});
+  if (existing) {
+    return existing;
+  }
+
+  return db.yokassaSettings.create({
+    data: {
+      id: "global",
+      mode: "test",
+      testSubscriptionEnabled: false,
+      sbpProvider: "tochka",
+    },
+  });
+}
+
+async function saveYokassaSettings(body: {
+  mode?: "test" | "production";
+  testSubscriptionEnabled?: boolean;
+  sbpProvider?: "tochka" | "yookassa";
+}) {
+  const existing = await db.yokassaSettings.findFirst({});
+  const data = {
+    ...(body.mode ? { mode: body.mode } : {}),
+    ...(typeof body.testSubscriptionEnabled === "boolean"
+      ? { testSubscriptionEnabled: body.testSubscriptionEnabled }
+      : {}),
+    ...(body.sbpProvider ? { sbpProvider: body.sbpProvider } : {}),
+  };
+
+  if (existing) {
+    return db.yokassaSettings.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return db.yokassaSettings.create({
+    data: {
+      id: "global",
+      mode: body.mode ?? "test",
+      testSubscriptionEnabled: body.testSubscriptionEnabled ?? false,
+      sbpProvider: body.sbpProvider ?? "tochka",
+    },
+  });
+}
+
 export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
   .use(adminMiddleware)
 
@@ -37,6 +84,7 @@ export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
           isActive,
           isTelegramPlan,
           telegramProxyEnabled,
+          allowedProtocols,
           sortOrder,
           prices,
           promoActive,
@@ -59,6 +107,7 @@ export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
               isActive,
               isTelegramPlan: isTelegramPlan ?? false,
               telegramProxyEnabled: telegramProxyEnabled ?? false,
+              allowedProtocols,
               sortOrder,
               promoActive: promoActive ?? false,
               promoPrice: promoPrice ?? null,
@@ -77,6 +126,7 @@ export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
               isActive,
               isTelegramPlan: isTelegramPlan ?? false,
               telegramProxyEnabled: telegramProxyEnabled ?? false,
+              allowedProtocols,
               sortOrder,
               promoActive: promoActive ?? false,
               promoPrice: promoPrice ?? null,
@@ -123,6 +173,7 @@ export const adminTariffRoutes = new Elysia({ prefix: "/admin/tariffs" })
         isActive: t.Boolean(),
         isTelegramPlan: t.Optional(t.Boolean()),
         telegramProxyEnabled: t.Optional(t.Boolean()),
+        allowedProtocols: t.Optional(t.Array(t.String())),
         sortOrder: t.Number(),
         prices: t.Array(
           t.Object({ period: t.String(), price: t.Number() }),
@@ -187,11 +238,7 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
 
   .get("/settings", async () => {
     const [settings, aiSettings] = await Promise.all([
-      db.yokassaSettings.upsert({
-        where: { id: "global" },
-        update: {},
-        create: { id: "global", mode: "test", testSubscriptionEnabled: false },
-      }),
+      getOrCreateYokassaSettings(),
       db.aiSettings.upsert({
         where: { id: "global" },
         update: {},
@@ -201,7 +248,7 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
     return {
       mode: settings.mode,
       testSubscriptionEnabled: settings.testSubscriptionEnabled,
-      sbpProvider: settings.sbpProvider,
+      sbpProvider: settings.sbpProvider ?? "tochka",
       hideAiMenuForAll: aiSettings.hideAiMenuForAll,
       productionCredentialsConfigured: Boolean(
         config.YOKASSA_SHOP_ID && config.YOKASSA_SECRET,
@@ -216,22 +263,7 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
     "/settings",
     async ({ body }) => {
       const [settings, aiSettings] = await Promise.all([
-        db.yokassaSettings.upsert({
-          where: { id: "global" },
-          update: {
-            ...(body.mode ? { mode: body.mode } : {}),
-            ...(typeof body.testSubscriptionEnabled === "boolean"
-              ? { testSubscriptionEnabled: body.testSubscriptionEnabled }
-              : {}),
-            ...(body.sbpProvider ? { sbpProvider: body.sbpProvider } : {}),
-          },
-          create: {
-            id: "global",
-            mode: body.mode ?? "test",
-            testSubscriptionEnabled: body.testSubscriptionEnabled ?? false,
-            sbpProvider: body.sbpProvider ?? "tochka",
-          },
-        }),
+        saveYokassaSettings(body),
         typeof body.hideAiMenuForAll === "boolean"
           ? db.aiSettings.upsert({
               where: { id: "global" },
@@ -247,8 +279,14 @@ export const adminYokassaRoutes = new Elysia({ prefix: "/admin/yokassa" })
       return {
         mode: settings.mode,
         testSubscriptionEnabled: settings.testSubscriptionEnabled,
-        sbpProvider: settings.sbpProvider,
+        sbpProvider: settings.sbpProvider ?? "tochka",
         hideAiMenuForAll: aiSettings.hideAiMenuForAll,
+        productionCredentialsConfigured: Boolean(
+          config.YOKASSA_SHOP_ID && config.YOKASSA_SECRET,
+        ),
+        testCredentialsConfigured: Boolean(
+          config.YOKASSA_TEST_SHOP_ID && config.YOKASSA_TEST_SECRET,
+        ),
       };
     },
     {

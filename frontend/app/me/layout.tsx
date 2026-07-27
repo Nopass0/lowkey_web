@@ -32,6 +32,7 @@ const routeTitles: Record<string, string> = {
 };
 
 routeTitles["/me/admin/mailings"] = "Рассылки в Telegram";
+routeTitles["/me/admin/client-rules"] = "Правила клиентов";
 
 export default function MeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

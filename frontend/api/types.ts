@@ -116,6 +116,8 @@ export interface UserProfile {
   telegramLinkCode: string | null;
   referralRate: number;
   sbpProvider?: "tochka" | "yookassa";
+  /** v2ray/Throne/Happ/Nekoray-compatible subscription URL (token=user UUID). */
+  subscribeLink?: string;
   vpnAccess: UserVpnAccess | null;
 }
 
@@ -184,6 +186,7 @@ export interface SubscriptionPlan {
   maxConcurrentConnections?: number;
   speedLimitUpMbps?: number | null;
   speedLimitDownMbps?: number | null;
+  allowedProtocols?: string[];
   isPopular?: boolean;
   isTelegramPlan?: boolean;
   telegramProxyEnabled?: boolean;

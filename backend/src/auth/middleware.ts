@@ -13,14 +13,29 @@ async function authenticateRequest(
   headers: Record<string, string | undefined>,
   set: { status?: number | string },
 ) {
-  const token = headers.authorization?.replace("Bearer ", "");
+  // 🛡️ BRUTAL LOGGER for debugging 401 on Client Rules
+  const targetPath = (headers['x-forwarded-uri'] || headers['x-original-uri'] || "unknown").toLowerCase();
+  const isRulesPath = targetPath.includes("client-rules");
+  
+  if (isRulesPath) {
+    const allHeaders = JSON.stringify(headers, null, 2);
+    console.warn(`[BRUTAL-LOGGER] Admin request detected. Path: ${targetPath}\nHeaders: ${allHeaders}`);
+  }
+
+  // Debug logging for production: list all incoming header keys to check for stripping/renaming
+  const headerKeys = Object.keys(headers).join(", ");
+  const authHeader = headers.authorization || (headers as any).Authorization;
+  
+  const token = authHeader?.replace("Bearer ", "");
   if (!token) {
+    console.warn(`[DEBUG-AUTH] No token. Keys: [${headerKeys}]. Path: ${headers['x-forwarded-uri'] || 'unknown'}`);
     set.status = 401;
     throw new Error("Unauthorized");
   }
 
   const payload = await verifyJwt(token);
   if (!payload) {
+    console.warn(`[DEBUG-AUTH] JWT Fail. Path: ${headers['x-forwarded-uri'] || 'unknown'}. Token prefix: ${token.substring(0, 10)}`);
     set.status = 401;
     throw new Error("Invalid token");
   }

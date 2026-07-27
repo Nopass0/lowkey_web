@@ -15,6 +15,23 @@ import {
   resolveVpnPolicyForUser,
 } from "../vpn/policy";
 
+function toMtprotoClientSecret(value?: string | null) {
+  const secret = value?.trim().toLowerCase();
+  if (!secret) {
+    return null;
+  }
+  if (/^dd[0-9a-f]{32}$/.test(secret)) {
+    return secret;
+  }
+  if (/^ee[0-9a-f]{32,}$/.test(secret)) {
+    return secret;
+  }
+  if (/^[0-9a-f]{32}$/.test(secret)) {
+    return `dd${secret}`;
+  }
+  return null;
+}
+
 function requireServerSecret(
   headers: Record<string, string | undefined>,
   set: { status?: number | string },
@@ -141,6 +158,48 @@ function verifyHostnameAgainstCert(certPem: string, hostname: string) {
 }
 
 export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
+  .get("/public/mtproto", async ({ set }) => {
+    try {
+      const settings = await db.mtprotoSettings.findFirst({});
+      const secret = toMtprotoClientSecret(settings?.secret);
+      const enabled = Boolean(settings?.enabled && secret);
+      // Default MTProto port is 2444 (the hysteria-server mtproto_listen on the
+      // production node). Was 443 previously, which is wrong — 443 is the website.
+      const port =
+        typeof settings?.port === "number" && Number.isFinite(settings.port)
+          ? Math.max(1, Math.trunc(settings.port))
+          : Number.parseInt(process.env.MTPROTO_FALLBACK_PORT ?? "2444", 10);
+
+      const server = await db.vpnServer.findFirst({
+        where: { status: "online" },
+        orderBy: { currentLoad: "asc" },
+      });
+      const host = String(server?.ip || "193.41.5.130").trim();
+      const params =
+        enabled && secret
+          ? new URLSearchParams({
+              server: host,
+              port: String(port),
+              secret,
+            })
+          : null;
+
+      return {
+        enabled,
+        host,
+        port,
+        protocol: "MTProto",
+        tgLink: params ? `tg://proxy?${params.toString()}` : null,
+        shareLink: params ? `https://t.me/proxy?${params.toString()}` : null,
+        botUsername: settings?.botUsername ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("[PublicMtproto] error:", error);
+      set.status = 500;
+      return { message: "Internal server error" };
+    }
+  })
   .post(
     "/register",
     async ({ body, headers, set }) => {
@@ -149,7 +208,14 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
       }
 
       try {
-        const { ip, hostname, port, supportedProtocols, serverType } = body;
+        const {
+          ip,
+          hostname,
+          port,
+          supportedProtocols,
+          serverType,
+          connectLinkTemplate,
+        } = body;
         const existing = await db.vpnServer.findFirst({
           where: { ip, port },
         });
@@ -161,6 +227,9 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
               hostname: hostname ?? existing.hostname ?? null,
               supportedProtocols,
               serverType,
+              ...(connectLinkTemplate !== undefined
+                ? { connectLinkTemplate: connectLinkTemplate || null }
+                : {}),
               status: "online",
               lastSeenAt: new Date(),
               ...(existing.deployStatus === "not_deployed" ? { deployStatus: "deployed" } : {}),
@@ -176,6 +245,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
             port,
             supportedProtocols,
             serverType,
+            connectLinkTemplate: connectLinkTemplate || null,
             status: "online",
             currentLoad: 0,
           },
@@ -195,6 +265,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
         port: t.Number(),
         supportedProtocols: t.Array(t.String()),
         serverType: t.String(),
+        connectLinkTemplate: t.Optional(t.Nullable(t.String())),
       }),
     },
   )
@@ -584,15 +655,34 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
           },
         });
 
-        if (!vpnToken) {
+        // UUID fallback: VLESS clients present the user's account UUID as
+        // the "token" because the VLESS wire format reserves exactly 16 bytes
+        // for auth. When we can't find a per-device VPN token, treat the
+        // input as a user id and gate purely on subscription state.
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+        let user: any = vpnToken?.user ?? null;
+        let deviceIdForSession: string | null = vpnToken?.deviceId ?? null;
+
+        if (!vpnToken && uuidRegex.test(token)) {
+          user = await db.user.findUnique({
+            where: { id: token },
+            include: { subscription: true },
+          });
+          if (user) {
+            deviceIdForSession = null;
+          }
+        }
+
+        if (!vpnToken && !user) {
           return { valid: false, reason: "Token not found" };
         }
 
-        if (vpnToken.expiresAt < new Date()) {
+        if (vpnToken && vpnToken.expiresAt < new Date()) {
           return { valid: false, reason: "Token expired" };
         }
 
-        const user = vpnToken.user;
         if (!user) {
           return { valid: false, reason: "User not found" };
         }
@@ -633,7 +723,7 @@ export const vpnServerRoutes = new Elysia({ prefix: "/servers" })
         return {
           valid: true,
           userId: user.id,
-          deviceId: vpnToken.deviceId,
+          deviceId: deviceIdForSession,
           protocol: protocol ?? "hysteria2",
           subscriptionExpired,
           limits: policy.effective,

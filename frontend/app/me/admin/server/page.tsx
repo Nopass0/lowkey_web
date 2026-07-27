@@ -102,7 +102,7 @@ const EMPTY_SERVER_FORM: ServerFormState = {
 
 const EMPTY_MTPROTO_SETTINGS: AdminMtprotoSettings = {
   enabled: false,
-  port: 8443,
+  port: 443,
   secret: "",
   adTag: "",
   channelUsername: "",

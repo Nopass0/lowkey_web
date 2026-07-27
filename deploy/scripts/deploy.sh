@@ -21,6 +21,14 @@ BITNET_THREADS="${BITNET_THREADS:-4}"
 BITNET_CTX_SIZE="${BITNET_CTX_SIZE:-4096}"
 BITNET_TEMPERATURE="${BITNET_TEMPERATURE:-0.7}"
 BITNET_N_PREDICT="${BITNET_N_PREDICT:-1024}"
+if [[ -z "${NGINX_HTTPS_LISTEN:-}" ]]; then
+  # nginx binds 0.0.0.0:443 directly. Previously this was 127.0.0.1:8444 because
+  # an external SNI multiplexer (nginx stream{ssl_preread} / sniproxy) owned real
+  # :443 — but that mux was never version-controlled and its outages took the
+  # whole site down (TLS alert 80 / "invalid response"). Since the VPN node
+  # listens on :2443 (not :443), nginx can own :443 itself.
+  NGINX_HTTPS_LISTEN="0.0.0.0:443"
+fi
 SERVER_NAMES="${DOMAIN}${AI_DOMAIN:+ ${AI_DOMAIN}}"
 
 require_backend_env() {
@@ -45,6 +53,7 @@ render_template() {
     -e "s/__SERVER_NAMES__/${SERVER_NAMES}/g" \
     -e "s/__BACKEND_PORT__/${BACKEND_BIND_PORT}/g" \
     -e "s/__FRONTEND_PORT__/${FRONTEND_BIND_PORT}/g" \
+    -e "s#__NGINX_HTTPS_LISTEN__#${NGINX_HTTPS_LISTEN}#g" \
     "${template_path}" > "${target_path}"
 }
 
@@ -55,7 +64,7 @@ ensure_server_packages() {
 append_n8n_http_config() {
   local target_path="$1"
 
-  [[ -n "${N8N_DOMAIN}" ]] || return
+  [[ -n "${N8N_DOMAIN}" ]] || return 0
 
   cat >> "${target_path}" <<EOF
 
@@ -85,13 +94,12 @@ EOF
 append_n8n_https_config() {
   local target_path="$1"
 
-  [[ -n "${N8N_DOMAIN}" ]] || return
+  [[ -n "${N8N_DOMAIN}" ]] || return 0
 
   cat >> "${target_path}" <<EOF
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen ${NGINX_HTTPS_LISTEN} ssl http2;
     server_name ${N8N_DOMAIN};
 
     ssl_certificate /etc/letsencrypt/live/${N8N_DOMAIN}/fullchain.pem;
@@ -116,6 +124,110 @@ server {
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
+    }
+}
+EOF
+}
+
+# ─── Spider (spider.lowkey.su) — migrated from Caddy ────────────────────
+# Previously Caddy proxied spider.lowkey.su → 127.0.0.1:8080 (Go spider-server).
+# Caddy was removed to let nginx own 80/443 for all lowkey domains. Spider is
+# an independent project living on the same host, so nginx fronts it too.
+append_spider_config() {
+  local target_path="$1"
+
+  [[ -n "${SPIDER_DOMAIN:-}" ]] || return 0
+
+  # HTTP block (ACME + redirect)
+  cat >> "${target_path}" <<EOF
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${SPIDER_DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+EOF
+
+  # HTTPS block — only if a cert for spider exists.
+  local spider_cert_dir="/etc/letsencrypt/live/${SPIDER_DOMAIN}"
+  [[ -f "${spider_cert_dir}/fullchain.pem" && -f "${spider_cert_dir}/privkey.pem" ]] || return 0
+
+  cat >> "${target_path}" <<EOF
+
+server {
+    listen ${NGINX_HTTPS_LISTEN} ssl http2;
+    server_name ${SPIDER_DOMAIN};
+
+    ssl_certificate ${spider_cert_dir}/fullchain.pem;
+    ssl_certificate_key ${spider_cert_dir}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_prefer_server_ciphers off;
+
+    # Security headers — carried over from the Caddyfile.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:${SPIDER_UPSTREAM_PORT:-8080};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        # Flush immediately so streamed / WebSocket responses are not buffered.
+        proxy_buffering off;
+    }
+}
+EOF
+}
+
+# ─── VoidDB (db.lowkey.su) ──────────────────────────────────────────────
+# VoidDB runs as a systemd service on the host (installed via the official
+# one-command deploy: https://github.com/Nopass0/void). It listens on
+# 127.0.0.1:7700. nginx proxies db.lowkey.su (HTTP) -> 127.0.0.1:7700 so the
+# backend docker container can reach it via http://db.lowkey.su.
+#
+# HTTP only (no TLS): db.lowkey.su traffic is intra-host (backend container ->
+# host nginx -> 127.0.0.1:7700). Adding public HTTPS here would need a cert for
+# db.lowkey.su, which is unnecessary since only the backend talks to it.
+append_voiddb_config() {
+  local target_path="$1"
+
+  [[ -n "${VOIDDB_DOMAIN:-}" ]] || return 0
+
+  cat >> "${target_path}" <<EOF
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${VOIDDB_DOMAIN};
+
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://127.0.0.1:${VOIDDB_PORT:-7700};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
     }
 }
 EOF
@@ -267,6 +379,31 @@ install_nginx_config() {
   fi
 
   if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
+    # nginx теперь сам владеет 0.0.0.0:443 (раньше за ним стоял внешний SNI-mux).
+    # Если 443 занят другим процессом — nginx не сможет забиндиться и упадёт.
+    # Проверяем заранее и выдаём осмысленную ошибку вместо молчаливого падения.
+    if command -v ss >/dev/null 2>&1; then
+      local holder
+      holder="$(ss -tlnpH 2>/dev/null | awk '$4 ~ /:443$/ {print $0}' | head -1 || true)"
+      # nginx сам может уже держать 443 с прошлого деплоя — это нормально.
+      if [[ -n "${holder}" ]] && ! echo "${holder}" | grep -qE 'nginx'; then
+        echo "==============================================================" >&2
+        echo "FATAL: порт 443 занят процессом, который НЕ является nginx:" >&2
+        echo "  ${holder}" >&2
+        echo "" >&2
+        echo "Раньше за nginx стоял внешний SNI-мультиплексор (nginx stream{}/sniproxy)," >&2
+        echo "который владел 0.0.0.0:443. Он не в репозитории и сейчас отдаёт" >&2
+        echo "TLS alert 80 ('недействительный ответ' в браузере)." >&2
+        echo "" >&2
+        echo "Нужно остановить этот процесс, чтобы nginx забрал 443 напрямую:" >&2
+        echo "  systemctl stop <mux-service> && systemctl disable <mux-service>" >&2
+        echo "Или если это ручной процесс:" >&2
+        echo "  pkill -f <binary-name>" >&2
+        echo "Затем перезапустите этот деплой." >&2
+        echo "==============================================================" >&2
+        exit 1
+      fi
+    fi
     render_template "${ROOT_DIR}/deploy/nginx-https.conf.template" "${target}"
   else
     render_template "${ROOT_DIR}/deploy/nginx-http.conf.template" "${target}"
@@ -278,6 +415,10 @@ install_nginx_config() {
     append_n8n_https_config "${target}"
   fi
 
+  append_spider_config "${target}"
+
+  append_voiddb_config "${target}"
+
   ln -sf "${target}" "${enabled}"
   nginx -t
   systemctl reload nginx
@@ -287,6 +428,14 @@ ensure_certificate() {
   local cert_dir="/etc/letsencrypt/live/${DOMAIN}"
   local n8n_cert_dir=""
   local needs_expand="false"
+
+  # Если установлен wildcard-сертификат (выпущен через issue-wildcard-cert.sh),
+  # он покрывает DOMAIN + *.DOMAIN (ai, n8n, s1, s2...). Ничего выпускать не нужно —
+  # nginx-шаблон уже указывает на ${cert_dir}/fullchain.pem.
+  if [[ -f "${cert_dir}/.wildcard" && -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
+    echo "[ensure_certificate] wildcard cert detected at ${cert_dir}, skipping issuance"
+    return
+  fi
 
   if [[ -n "${N8N_DOMAIN}" ]]; then
     n8n_cert_dir="/etc/letsencrypt/live/${N8N_DOMAIN}"
@@ -314,7 +463,15 @@ ensure_certificate() {
     )
 
     if [[ -n "${AI_DOMAIN}" ]]; then
-      certbot_args+=(-d "${AI_DOMAIN}")
+      # Only add AI_DOMAIN to the cert if it actually resolves in DNS. If the A
+      # record is missing, including it in the cert request makes the WHOLE
+      # issuance fail (Let's Encrypt HTTP-01 can't reach a non-existent host),
+      # leaving the main DOMAIN without a cert and the site down.
+      if getent hosts "${AI_DOMAIN}" >/dev/null 2>&1 || host "${AI_DOMAIN}" >/dev/null 2>&1; then
+        certbot_args+=(-d "${AI_DOMAIN}")
+      else
+        echo "[ensure_certificate] WARNING: AI_DOMAIN '${AI_DOMAIN}' does not resolve in DNS; excluding it from the cert. Create an A record (or set AI_DOMAIN='') to enable ai.lowkey.su." >&2
+      fi
     fi
 
     if [[ "${needs_expand}" == "true" ]]; then
@@ -325,14 +482,35 @@ ensure_certificate() {
   fi
 
   if [[ -n "${N8N_DOMAIN}" && ! -f "${n8n_cert_dir}/fullchain.pem" ]]; then
-    certbot certonly \
+    # n8n is an optional auxiliary service; a missing DNS record for it must NOT
+    # abort the whole deploy (it would leave the main site down). Warn and continue.
+    if ! certbot certonly \
       --webroot \
       -w /var/www/certbot \
       -d "${N8N_DOMAIN}" \
       --cert-name "${N8N_DOMAIN}" \
       --non-interactive \
       --agree-tos \
-      -m "${LETSENCRYPT_EMAIL}"
+      -m "${LETSENCRYPT_EMAIL}"; then
+      echo "[ensure_certificate] WARNING: cert for ${N8N_DOMAIN} failed (DNS not set up?). n8n HTTPS will be unavailable; main site unaffected." >&2
+    fi
+  fi
+
+  # Spider cert — migrated from Caddy. Separate cert (different site).
+  if [[ -n "${SPIDER_DOMAIN:-}" ]]; then
+    local spider_cert_dir="/etc/letsencrypt/live/${SPIDER_DOMAIN}"
+    if [[ ! -f "${spider_cert_dir}/fullchain.pem" ]]; then
+      if ! certbot certonly \
+        --webroot \
+        -w /var/www/certbot \
+        -d "${SPIDER_DOMAIN}" \
+        --cert-name "${SPIDER_DOMAIN}" \
+        --non-interactive \
+        --agree-tos \
+        -m "${LETSENCRYPT_EMAIL}"; then
+        echo "[ensure_certificate] WARNING: cert for ${SPIDER_DOMAIN} failed. spider HTTPS will be unavailable; main site unaffected." >&2
+      fi
+    fi
   fi
 }
 

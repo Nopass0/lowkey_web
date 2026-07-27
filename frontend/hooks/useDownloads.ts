@@ -26,6 +26,7 @@ const MOCK_RELEASES: AppRelease[] = [
     downloadUrl:
       "https://play.google.com/store/apps/details?id=com.v2raytun.android",
     fileSizeMb: 0,
+    sha256: "",
     downloadCount: 1247,
     isLatest: true,
     createdAt: "2026-02-20T00:00:00Z",
@@ -37,6 +38,7 @@ const MOCK_RELEASES: AppRelease[] = [
     changelog: "Official App Store install link for the iOS client.",
     downloadUrl: "https://apps.apple.com/us/app/v2raytun/id6476628951",
     fileSizeMb: 0,
+    sha256: "",
     downloadCount: 938,
     isLatest: true,
     createdAt: "2026-02-20T00:00:00Z",
@@ -49,6 +51,7 @@ const MOCK_RELEASES: AppRelease[] = [
     downloadUrl:
       "https://github.com/throneproj/Throne/releases/download/1.0.13/Throne-1.0.13-windows64-installer.exe",
     fileSizeMb: 0,
+    sha256: "",
     downloadCount: 894,
     isLatest: true,
     createdAt: "2026-02-18T00:00:00Z",

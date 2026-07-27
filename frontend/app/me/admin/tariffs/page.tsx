@@ -27,6 +27,7 @@ interface AdminPlan extends SubscriptionPlan {
   maxConcurrentConnections: number;
   speedLimitUpMbps: number | null;
   speedLimitDownMbps: number | null;
+  allowedProtocols: string[];
   promoActive: boolean;
   promoPrice: number | null;
   promoLabel: string | null;
@@ -58,6 +59,15 @@ export default function TariffsAdminPage() {
   const [ykLoading, setYkLoading] = useState(false);
   const [ykSaving, setYkSaving] = useState(false);
 
+  const applyYKSettings = (settings: Partial<AdminYokassaSettings>) => {
+    setYkMode(settings.mode === "production" ? "production" : "test");
+    setTestSubscriptionEnabled(Boolean(settings.testSubscriptionEnabled));
+    setSbpProvider(settings.sbpProvider === "yookassa" ? "yookassa" : "tochka");
+    setHideAiMenuForAll(Boolean(settings.hideAiMenuForAll));
+    setProdCredsReady(Boolean(settings.productionCredentialsConfigured));
+    setTestCredsReady(Boolean(settings.testCredentialsConfigured));
+  };
+
   const fetchPlans = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -79,6 +89,7 @@ export default function TariffsAdminPage() {
         maxConcurrentConnections: plan.maxConcurrentConnections ?? 1,
         speedLimitUpMbps: plan.speedLimitUpMbps ?? null,
         speedLimitDownMbps: plan.speedLimitDownMbps ?? null,
+        allowedProtocols: plan.allowedProtocols ?? [],
       }));
       setPlans(transformed);
     } catch {
@@ -92,12 +103,7 @@ export default function TariffsAdminPage() {
     setYkLoading(true);
     try {
       const res = await apiClient.get<AdminYokassaSettings>("/admin/yokassa/settings");
-      setYkMode(res.mode);
-      setTestSubscriptionEnabled(res.testSubscriptionEnabled);
-      setSbpProvider(res.sbpProvider);
-      setHideAiMenuForAll(res.hideAiMenuForAll);
-      setProdCredsReady(res.productionCredentialsConfigured);
-      setTestCredsReady(res.testCredentialsConfigured);
+      applyYKSettings(res);
     } catch {
       // ignore
     } finally {
@@ -116,12 +122,15 @@ export default function TariffsAdminPage() {
       toast.error("Боевые ключи YooKassa не настроены на сервере");
       return;
     }
+    // Optimistic update of ONLY this switch; don't touch the others.
+    const prevMode = ykMode;
+    setYkMode(newMode);
     setYkSaving(true);
     try {
       await apiClient.patch("/admin/yokassa/settings", { mode: newMode });
-      setYkMode(newMode);
       toast.success(`ЮKassa переключена в режим: ${newMode === "test" ? "Тестовый" : "Боевой"}`);
     } catch {
+      setYkMode(prevMode); // rollback only this switch
       toast.error("Ошибка при смене режима ЮKassa");
     } finally {
       setYkSaving(false);
@@ -129,15 +138,14 @@ export default function TariffsAdminPage() {
   };
 
   const handleToggleTestSubscription = async () => {
+    const next = !testSubscriptionEnabled;
+    setTestSubscriptionEnabled(next); // optimistic, only this switch
     setYkSaving(true);
     try {
-      const next = !testSubscriptionEnabled;
-      await apiClient.patch("/admin/yokassa/settings", {
-        testSubscriptionEnabled: next,
-      });
-      setTestSubscriptionEnabled(next);
+      await apiClient.patch("/admin/yokassa/settings", { testSubscriptionEnabled: next });
       toast.success(next ? "Тестовая подписка включена" : "Тестовая подписка отключена");
     } catch {
+      setTestSubscriptionEnabled(!next); // rollback
       toast.error("Не удалось обновить тестовую подписку");
     } finally {
       setYkSaving(false);
@@ -145,15 +153,14 @@ export default function TariffsAdminPage() {
   };
 
   const handleToggleGlobalAiMenu = async () => {
+    const next = !hideAiMenuForAll;
+    setHideAiMenuForAll(next); // optimistic, only this switch
     setYkSaving(true);
     try {
-      const next = !hideAiMenuForAll;
-      await apiClient.patch("/admin/yokassa/settings", {
-        hideAiMenuForAll: next,
-      });
-      setHideAiMenuForAll(next);
+      await apiClient.patch("/admin/yokassa/settings", { hideAiMenuForAll: next });
       toast.success(next ? "AI скрыт у всех пользователей" : "AI снова показывается в меню");
     } catch {
+      setHideAiMenuForAll(!next); // rollback
       toast.error("Не удалось обновить глобальную настройку AI");
     } finally {
       setYkSaving(false);
@@ -161,16 +168,18 @@ export default function TariffsAdminPage() {
   };
 
   const handleChangeSbpProvider = async (next: "tochka" | "yookassa") => {
+    const prev = sbpProvider;
+    setSbpProvider(next); // optimistic, only this switch
     setYkSaving(true);
     try {
       await apiClient.patch("/admin/yokassa/settings", { sbpProvider: next });
-      setSbpProvider(next);
       toast.success(
         next === "yookassa"
           ? "СБП переведён на YooKassa"
           : "СБП переведён на Точка Банк",
       );
     } catch {
+      setSbpProvider(prev); // rollback
       toast.error("Не удалось обновить провайдера СБП");
     } finally {
       setYkSaving(false);
@@ -193,6 +202,7 @@ export default function TariffsAdminPage() {
       speedLimitDownMbps: null,
       isTelegramPlan: false,
       telegramProxyEnabled: false,
+      allowedProtocols: [],
       promoActive: false, promoPrice: null, promoLabel: null, promoMaxUses: null,
     });
     setIsDialogOpen(true);
@@ -215,6 +225,7 @@ export default function TariffsAdminPage() {
         speedLimitDownMbps: editingPlan.speedLimitDownMbps ?? null,
         isTelegramPlan: editingPlan.isTelegramPlan ?? false,
         telegramProxyEnabled: editingPlan.telegramProxyEnabled ?? false,
+        allowedProtocols: (editingPlan as any).allowedProtocols ?? [],
         promoActive: editingPlan.promoActive ?? false,
         promoPrice: editingPlan.promoActive ? (editingPlan.promoPrice ?? null) : null,
         promoLabel: editingPlan.promoLabel ?? null,

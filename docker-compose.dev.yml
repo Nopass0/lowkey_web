@@ -1,0 +1,39 @@
+# Development-only stack: just VoidDB. Backend and frontend run natively
+# (not in containers) so you get hot reload via `bun run --watch` / `next dev`.
+#
+# Usage:
+#   ./dev.sh        (Linux/macOS)
+#   .\dev.ps1       (Windows PowerShell)
+#
+# The dev scripts handle cloning github.com/Nopass0/void next to this repo
+# (into ../void) if it isn't already present, then bring this compose file up.
+# If you prefer to place the void sources elsewhere, set VOID_REPO_PATH.
+
+services:
+  voiddb:
+    # Built from the VoidDB server sources (github.com/Nopass0/void).
+    # The path is resolved relative to THIS file. The dev scripts clone the
+    # repo into ../void by default; override with VOID_REPO_PATH env var
+    # (absolute path) if you keep it elsewhere.
+    build:
+      context: ${VOID_REPO_PATH:-../void}
+      dockerfile: Dockerfile
+    container_name: lowkey-voiddb-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7700:7700"
+    environment:
+      # VoidDB reads these to create the initial admin + JWT secret.
+      # Keep them in sync with backend/.env (VOIDDB_USERNAME / VOIDDB_PASSWORD).
+      VOIDDB_ADMIN_USER: ${VOIDDB_USERNAME:-admin}
+      VOIDDB_ADMIN_PASSWORD: ${VOIDDB_PASSWORD:-admin}
+    volumes:
+      # Persist dev data between restarts so you don't lose test rows.
+      - ./.devdata/voiddb:/data
+    healthcheck:
+      # VoidDB login endpoint; a 200 means the API is ready.
+      test: ["CMD-SHELL", "curl -fsS -X POST http://localhost:7700/v1/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"${VOIDDB_USERNAME:-admin}\",\"password\":\"${VOIDDB_PASSWORD:-admin}\"}' -o /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s

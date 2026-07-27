@@ -5,12 +5,11 @@
 
 import Elysia from "elysia";
 import { db } from "../db";
-import { authMiddleware } from "../auth/middleware";
 
 function buildMobileVpnRoutes(prefix: string) {
-  return new Elysia({ prefix })
-    .use(authMiddleware)
-    .get("/blocked-domains", async () => {
+  // Keep this endpoint open for VPN nodes and clients without user JWT.
+  // It only returns globally configured blocked domains.
+  const openRoutes = new Elysia({ prefix }).get("/blocked-domains", async () => {
       const items = await db.vpnBlockedDomain.findMany({
         where: { isActive: true },
         select: { domain: true, redirectUrl: true },
@@ -22,6 +21,7 @@ function buildMobileVpnRoutes(prefix: string) {
         })),
       };
     });
+  return new Elysia().use(openRoutes);
 }
 
 export const mobileVpnRoutes = new Elysia()

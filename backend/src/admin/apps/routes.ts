@@ -9,7 +9,7 @@ import { db } from "../../db";
 import { adminMiddleware } from "../../auth/middleware";
 import { config } from "../../config";
 import { mkdir } from "fs/promises";
-import { join } from "path";
+import { extname, join } from "path";
 import { createHash } from "crypto";
 
 /**
@@ -17,6 +17,10 @@ import { createHash } from "crypto";
  */
 function sha256hex(data: ArrayBuffer): string {
   return createHash("sha256").update(Buffer.from(data)).digest("hex");
+}
+
+function sanitizeVersion(version: string): string {
+  return version.trim().replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
 /**
@@ -64,14 +68,36 @@ export const adminAppRoutes = new Elysia({ prefix: "/admin/apps" })
           set.status = 400;
           return { message: "Platform must be 'android' or 'windows'" };
         }
+        if (!(file instanceof File)) {
+          set.status = 400;
+          return { message: "File is required" };
+        }
+        const normalizedVersion = sanitizeVersion(version);
+        if (!normalizedVersion) {
+          set.status = 400;
+          return { message: "Version is required" };
+        }
+        const maxMb = Number(process.env.APP_RELEASE_MAX_MB ?? "2048");
+        const maxBytes = Number.isFinite(maxMb) && maxMb > 0 ? maxMb * 1024 * 1024 : 2048 * 1024 * 1024;
+        if (file.size > maxBytes) {
+          set.status = 413;
+          return { message: `File is too large (max ${Math.floor(maxBytes / (1024 * 1024))} MB)` };
+        }
 
         // Ensure uploads directory exists
         const uploadsDir = join(config.APP_FILES_DIR, "releases");
         await mkdir(uploadsDir, { recursive: true });
 
-        // Determine file extension: MSI for Windows, APK for Android
-        const ext = platform === "android" ? ".apk" : ".msi";
-        const fileName = `${platform}-${version}${ext}`;
+        // Determine safe file extension and normalize common Windows formats.
+        const incomingExt = extname(file.name ?? "").toLowerCase();
+        const allowedWindows = new Set([".msi", ".exe"]);
+        const ext =
+          platform === "android"
+            ? ".apk"
+            : allowedWindows.has(incomingExt)
+              ? incomingExt
+              : ".msi";
+        const fileName = `${platform}-${normalizedVersion}${ext}`;
         const filePath = join(uploadsDir, fileName);
 
         // Read file bytes
@@ -94,7 +120,7 @@ export const adminAppRoutes = new Elysia({ prefix: "/admin/apps" })
         const release = await db.appRelease.create({
           data: {
             platform,
-            version,
+            version: normalizedVersion,
             changelog,
             downloadUrl,
             fileSizeMb,
