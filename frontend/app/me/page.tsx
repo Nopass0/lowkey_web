@@ -88,7 +88,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { devices } = useDevices();
   const { info: refInfo } = useReferralInfo();
-  const [copiedKey, setCopiedKey] = useState<"vless" | "android-vless" | "android-compat-vless" | "mtproto" | null>(null);
+  const [copiedKey, setCopiedKey] = useState<"vless" | "android-vless" | "android-compat-vless" | "mtproto" | "subscribe" | null>(null);
 
   useEffect(() => {
     fetchPage(1, 5);
@@ -119,7 +119,7 @@ export default function DashboardPage() {
   );
   const copyToClipboard = async (
     value: string,
-    key: "vless" | "android-vless" | "android-compat-vless" | "mtproto",
+    key: "vless" | "android-vless" | "android-compat-vless" | "mtproto" | "subscribe",
   ) => {
     await navigator.clipboard.writeText(value);
     setCopiedKey(key);
@@ -385,6 +385,45 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
+
+            {profile.subscribeLink && (
+              <div className="bg-primary/5 border-2 border-primary/30 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-primary font-semibold">
+                      ⭐ Ссылка на подписку
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Одна ссылка для всех клиентов (v2rayN, Throne, Happ, Nekoray).
+                      Скопируйте и вставьте в приложение — серверы подгрузятся автоматически.
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="cursor-pointer shadow-none shrink-0"
+                    onClick={() =>
+                      copyToClipboard(profile.subscribeLink!, "subscribe")
+                    }
+                  >
+                    {copiedKey === "subscribe" ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Скопировано
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Копировать
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background px-4 py-3 font-mono text-xs leading-6 break-all">
+                  {profile.subscribeLink}
+                </div>
+              </div>
+            )}
 
             {profile.vpnAccess.vlessLink && (
               <div className="bg-muted/40 border border-border/50 rounded-2xl p-4 space-y-3">

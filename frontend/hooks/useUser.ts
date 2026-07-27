@@ -43,6 +43,7 @@ const MOCK_PROFILE: UserProfile = {
   telegramLinkCode: null,
   referralRate: 10,
   sbpProvider: "tochka",
+  subscribeLink: "https://lowkey.su/api/subscribe-link?token=demo-user",
   vpnAccess: {
     serverIp: "46.226.166.226",
     serverHost: "s1.lowkey.su",
